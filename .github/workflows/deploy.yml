@@ -8,39 +8,34 @@ on:
 
 concurrency:
   group: navi-api-deploy
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
     name: Production Deploy on Mac mini (vllm-1)
     runs-on: self-hosted
+    timeout-minutes: 10
 
     steps:
-      - name: Update Production Repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync code to Production Directory
         timeout-minutes: 1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          export GIT_TERMINAL_PROMPT=0
-          export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
           REPO_DIR="$HOME/Documents/tendermind/navi-api"
+          mkdir -p "$REPO_DIR"
 
-          if [ ! -d "$REPO_DIR/.git" ]; then
-            echo "❌ Repository not found at $REPO_DIR"
-            exit 1
-          fi
+          echo "🔄 Syncing latest code to $REPO_DIR..."
+          # Sync checked-out repository to production directory, preserving .env and persistent data
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='data' \
+            ./ "$REPO_DIR/"
 
-          echo "🔄 Fetching latest code (SSH with 1-minute timeout limit)..."
-          # Try SSH fetch in non-interactive batch mode; fallback to ephemeral GITHUB_TOKEN if needed
-          if ! git -C "$REPO_DIR" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch origin main; then
-            echo "⚠️ SSH fetch failed or key unauthenticated in runner environment, falling back to GITHUB_TOKEN..."
-            git -C "$REPO_DIR" fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" main
-          fi
-
-          git -C "$REPO_DIR" reset --hard FETCH_HEAD
-
-          echo "✅ Repository successfully updated."
+          echo "✅ Code sync complete."
 
       - name: Build and Deploy Production Docker Containers
         run: |
@@ -48,8 +43,8 @@ jobs:
           REPO_DIR="$HOME/Documents/tendermind/navi-api"
           cd "$REPO_DIR"
 
-          echo "🐳 Building heavy production Docker images..."
-          docker compose build --pull
+          echo "🐳 Building Docker images (using cache)..."
+          docker compose build
 
           echo "🚀 Starting production services (PostgreSQL 16 + Gunicorn ASGI)..."
           docker compose up -d --remove-orphans
