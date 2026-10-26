@@ -10,6 +10,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.exam_session import ExamSession
+    from app.models.problem import StudentProblemSubmission
     from app.models.violation_log import ViolationLog
 
 
@@ -26,6 +27,7 @@ class StudentSession(Base, TimestampMixin):
     student_id_number: Mapped[str] = mapped_column(String(100), nullable=False)
     hints_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     violation_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_status: Mapped[str] = mapped_column(String(50), default="in_progress", nullable=False)
     submitted_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_submitted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -43,6 +45,12 @@ class StudentSession(Base, TimestampMixin):
     exam_session: Mapped["ExamSession"] = relationship("ExamSession", back_populates="students")
     violations: Mapped[list["ViolationLog"]] = relationship(
         "ViolationLog",
+        back_populates="student_session",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    submissions: Mapped[list["StudentProblemSubmission"]] = relationship(
+        "StudentProblemSubmission",
         back_populates="student_session",
         cascade="all, delete-orphan",
         lazy="selectin",

@@ -13,16 +13,21 @@ from app.schemas.exam_session import (
     ExamSessionDetailResponse,
     ExamSessionResponse,
     StudentSummary,
+)
+from app.schemas.health import HealthResponse
+from app.schemas.problem import (
+    ProblemCreate,
+    ProblemResponse,
+    PublicProblemResponse,
+    PublicTestCase,
     TestCaseCreate,
     TestCaseResponse,
 )
-from app.schemas.health import HealthResponse
 from app.schemas.socratic_hint import (
     SocraticHintRequest,
     SocraticHintResponse,
 )
 from app.schemas.student import (
-    PublicTestCase,
     StudentJoinRequest,
     StudentJoinResponse,
     StudentStatusResponse,
@@ -38,6 +43,9 @@ __all__ = [
     "ExamSessionCreate",
     "ExamSessionResponse",
     "ExamSessionDetailResponse",
+    "ProblemCreate",
+    "ProblemResponse",
+    "PublicProblemResponse",
     "TestCaseCreate",
     "TestCaseResponse",
     "StudentSummary",

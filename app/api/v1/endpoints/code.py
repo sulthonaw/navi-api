@@ -43,5 +43,5 @@ async def submit_exam_code(
     payload: CodeSubmitRequest,
     db: AsyncSession = Depends(get_db),
 ) -> CodeSubmitResponse:
-    """Grade submission against full test suite."""
-    return await exam_service.submit_exam(db, payload)
+    """Grade submission against full test suite for the problem."""
+    return await exam_service.submit_problem_code(db, payload)

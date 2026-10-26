@@ -14,6 +14,11 @@ class ViolationReportRequest(BaseModel):
         description="Type of violation: alt_tab, window_blur, devtools_opened, etc.",
         examples=["alt_tab"],
     )
+    is_kiosk_active: bool = Field(
+        True,
+        description="Whether the kiosk low-level keyboard/window hook is currently active",
+        examples=[True],
+    )
     details: str | None = Field(
         None,
         description="Optional diagnostic context from the desktop kiosk client",

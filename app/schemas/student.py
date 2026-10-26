@@ -1,6 +1,10 @@
 """Pydantic schemas for Student room access and status."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.problem import PublicProblemResponse
 
 
 class StudentJoinRequest(BaseModel):
@@ -18,31 +22,25 @@ class StudentJoinRequest(BaseModel):
         min_length=2,
         max_length=150,
         description="Full student name",
-        examples=["Budi Pratama"],
+        examples=["Willy Gregory"],
     )
     student_id_number: str = Field(
-        ..., min_length=2, max_length=100, description="Student ID / NIM", examples=["13521001"]
+        ...,
+        min_length=2,
+        max_length=100,
+        description="Student ID / NIM",
+        examples=["215150200111001"],
     )
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "room_code": "NAVI-8392",
-                "student_name": "Budi Pratama",
-                "student_id_number": "13521001",
+                "student_name": "Willy Gregory",
+                "student_id_number": "215150200111001",
             }
         }
     )
-
-
-class PublicTestCase(BaseModel):
-    """Public sample test case visible to students."""
-
-    id: int
-    input_data: str
-    expected_output: str
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentJoinResponse(BaseModel):
@@ -50,29 +48,40 @@ class StudentJoinResponse(BaseModel):
 
     student_id: int = Field(..., description="Unique student session ID", examples=[1])
     room_code: str = Field(..., examples=["NAVI-8392"])
-    title: str = Field(..., examples=["Pengecekan Bilangan Prima"])
-    description: str = Field(..., examples=["Buat fungsi yang membaca bilangan prima..."])
-    starter_code: str = Field(..., examples=["def is_prime(n):\n    pass\n"])
-    hint_quota: int = Field(..., examples=[3])
-    hints_used: int = Field(..., examples=[0])
-    remaining_hints: int = Field(..., examples=[3])
-    allow_syntax_hints: bool = Field(..., examples=[True])
-    allow_logic_hints: bool = Field(..., examples=[True])
-    public_test_cases: list[PublicTestCase] = []
+    student_name: str = Field(..., examples=["Willy Gregory"])
+    student_id_number: str = Field(..., examples=["215150200111001"])
+    duration_minutes: int = Field(90, description="Exam duration in minutes", examples=[90])
+    expires_at: datetime | None = Field(
+        None, description="Absolute expiration timestamp", examples=["2026-10-27T10:30:00Z"]
+    )
+    hint_quota: int = Field(5, description="Total hint quota", examples=[5])
+    hints_used: int = Field(0, description="Hints consumed so far", examples=[0])
+    remaining_hints: int = Field(5, description="Remaining hints available", examples=[5])
+    allow_syntax_hints: bool = Field(True, examples=[True])
+    allow_logic_hints: bool = Field(True, examples=[True])
+    problems: list[PublicProblemResponse] = Field(
+        default_factory=list, description="List of problems in this exam session"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class StudentStatusResponse(BaseModel):
-    """Current live status of a student participant."""
+    """Current live status and progress of a student participant."""
 
-    student_id: int
-    student_name: str
-    student_id_number: str
-    hints_used: int
-    violation_count: int
-    last_status: str
-    is_submitted: bool
-    submitted_code: str | None = None
+    student_id: int = Field(..., examples=[1])
+    student_name: str = Field(..., examples=["Willy Gregory"])
+    student_id_number: str = Field(..., examples=["215150200111001"])
+    hints_used: int = Field(..., examples=[1])
+    violation_count: int = Field(..., examples=[0])
+    solved_problem_ids: list[int] = Field(default_factory=list, examples=[[101]])
+    in_progress_problem_ids: list[int] = Field(default_factory=list, examples=[[102]])
+    total_score: int = Field(0, description="Accumulated score across all problems", examples=[20])
+    is_submitted: bool = Field(
+        False, description="Whether final exam is finalized", examples=[False]
+    )
+    time_remaining_seconds: int = Field(
+        0, description="Seconds left before expiry", examples=[3420]
+    )
 
     model_config = ConfigDict(from_attributes=True)

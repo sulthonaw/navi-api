@@ -7,6 +7,7 @@ class SocraticHintRequest(BaseModel):
     """Schema for student requesting a Socratic hint on code errors."""
 
     student_id: int = Field(..., description="Student session ID", examples=[1])
+    problem_id: int | None = Field(None, description="Target problem ID", examples=[101])
     source_code: str = Field(
         ...,
         description="Current Python source code with the encountered issue",

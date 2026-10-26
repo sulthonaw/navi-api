@@ -1,4 +1,4 @@
-"""Pydantic schemas for Code Testing, Sandbox Execution, and Final Submission."""
+"""Pydantic schemas for Code Testing, Sandbox Execution, and Problem Submission."""
 
 from datetime import datetime
 
@@ -6,9 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CodeRunRequest(BaseModel):
-    """Schema for running student code against public test cases."""
+    """Schema for running student code against public test cases for a specific problem."""
 
     student_id: int = Field(..., description="Student session ID", examples=[1])
+    problem_id: int = Field(..., description="Problem challenge ID", examples=[101])
     source_code: str = Field(
         ...,
         description="Python 3 source code written by student",
@@ -21,7 +22,8 @@ class CodeRunRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "student_id": 1,
-                "source_code": "def is_prime(n):\n    if n <= 1:\n        return False\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            return False\n    return True\n\nif __name__ == '__main__':\n    n = int(input())\n    print(is_prime(n))\n",
+                "problem_id": 101,
+                "source_code": "def is_prime(n):\n    return n > 1\n",
             }
         }
     )
@@ -79,7 +81,7 @@ class CodeRunResponse(BaseModel):
                         "test_case_id": 1,
                         "is_hidden": False,
                         "passed": True,
-                        "input_data": "5\n",
+                        "input_data": "7\n",
                         "expected_output": "True\n",
                         "actual_output": "True\n",
                         "error_message": None,
@@ -94,22 +96,33 @@ class CodeRunResponse(BaseModel):
 
 
 class CodeSubmitRequest(BaseModel):
-    """Schema for final exam answer submission."""
+    """Schema for submitting code solution for a specific problem."""
 
     student_id: int = Field(..., description="Student session ID", examples=[1])
+    problem_id: int = Field(..., description="Problem challenge ID", examples=[101])
     source_code: str = Field(
         ...,
-        description="Final Python 3 source code",
+        description="Final Python 3 source code for the problem",
         examples=["def is_prime(n):\n    return n > 1\n"],
     )
 
 
 class CodeSubmitResponse(BaseModel):
-    """Grading verdict for the final exam submission."""
+    """Grading verdict for problem submission with points and total accumulated score."""
 
-    student_id: int
-    score_percentage: float = Field(..., examples=[100.0])
-    passed_tests: int = Field(..., examples=[3])
-    total_tests: int = Field(..., examples=[3])
-    status: str = Field(..., examples=["accepted"])
-    submitted_at: datetime
+    student_id: int = Field(..., examples=[1])
+    problem_id: int = Field(..., examples=[101])
+    is_passed: bool = Field(..., description="Whether all test cases passed", examples=[True])
+    points_earned: int = Field(..., description="Points earned for this problem", examples=[20])
+    passed_tests: int = Field(..., examples=[5])
+    total_tests: int = Field(..., examples=[5])
+    status: str = Field(
+        ..., description="Submission status (e.g. accepted, wrong_answer)", examples=["accepted"]
+    )
+    total_score_accumulated: int = Field(
+        ..., description="Total points accumulated across all problems", examples=[45]
+    )
+    score_percentage: float = Field(
+        100.0, description="Percentage of test cases passed for this problem", examples=[100.0]
+    )
+    submitted_at: datetime = Field(..., description="Timestamp of submission")

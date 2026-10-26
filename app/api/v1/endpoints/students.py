@@ -1,10 +1,9 @@
 """API Endpoints for Student Kiosk participation."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models.student_session import StudentSession
 from app.schemas.student import (
     StudentJoinRequest,
     StudentJoinResponse,
@@ -42,20 +41,5 @@ async def get_student_status(
     student_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> StudentStatusResponse:
-    """Retrieve participant session status."""
-    student = await db.get(StudentSession, student_id)
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Student #{student_id} not found.",
-        )
-    return StudentStatusResponse(
-        student_id=student.id,
-        student_name=student.student_name,
-        student_id_number=student.student_id_number,
-        hints_used=student.hints_used,
-        violation_count=student.violation_count,
-        last_status=student.last_status,
-        is_submitted=student.is_submitted,
-        submitted_code=student.submitted_code,
-    )
+    """Retrieve participant session status, solved problems, and remaining time."""
+    return await exam_service.get_student_status(db, student_id)

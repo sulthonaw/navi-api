@@ -48,6 +48,9 @@ class SocraticEngine:
         error_message: str,
         faulty_line_number: int | None = None,
         language: str = "id",
+        problem_title: str | None = None,
+        problem_description: str | None = None,
+        problem_constraints: list[str] | None = None,
     ) -> tuple[str, str]:
         """
         Generate a Socratic hint.
@@ -58,7 +61,16 @@ class SocraticEngine:
 
         if client:
             try:
+                problem_context = ""
+                if problem_title:
+                    problem_context += f"- Problem Title: {problem_title}\n"
+                if problem_description:
+                    problem_context += f"- Problem Story: {problem_description}\n"
+                if problem_constraints:
+                    problem_context += f"- Constraints: {', '.join(problem_constraints)}\n"
+
                 prompt_content = (
+                    f"Problem Context:\n{problem_context}\n"
                     f"Student Encountered Error:\n"
                     f"- Error Type: {error_type}\n"
                     f"- Error Message: {error_message}\n"

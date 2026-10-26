@@ -306,6 +306,12 @@ components:
           description: Student session ID
           examples:
           - 1
+        problem_id:
+          type: integer
+          title: Problem Id
+          description: Problem challenge ID
+          examples:
+          - 101
         source_code:
           type: string
           title: Source Code
@@ -318,14 +324,14 @@ components:
       type: object
       required:
       - student_id
+      - problem_id
       - source_code
       title: CodeRunRequest
-      description: Schema for running student code against public test cases.
+      description: Schema for running student code against public test cases for a
+        specific problem.
       example:
-        source_code: "def is_prime(n):\n    if n <= 1:\n        return False\n   \
-          \ for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n        \
-          \    return False\n    return True\n\nif __name__ == '__main__':\n    n\
-          \ = int(input())\n    print(is_prime(n))\n"
+        problem_id: 101
+        source_code: "def is_prime(n):\n    return n > 1\n"
         student_id: 1
     CodeRunResponse:
       properties:
@@ -405,7 +411,7 @@ components:
           expected_output: 'True
 
             '
-          input_data: '5
+          input_data: '7
 
             '
           is_hidden: false
@@ -420,57 +426,97 @@ components:
           description: Student session ID
           examples:
           - 1
+        problem_id:
+          type: integer
+          title: Problem Id
+          description: Problem challenge ID
+          examples:
+          - 101
         source_code:
           type: string
           title: Source Code
-          description: Final Python 3 source code
+          description: Final Python 3 source code for the problem
           examples:
           - "def is_prime(n):\n    return n > 1\n"
       type: object
       required:
       - student_id
+      - problem_id
       - source_code
       title: CodeSubmitRequest
-      description: Schema for final exam answer submission.
+      description: Schema for submitting code solution for a specific problem.
     CodeSubmitResponse:
       properties:
         student_id:
           type: integer
           title: Student Id
-        score_percentage:
-          type: number
-          title: Score Percentage
           examples:
-          - 100.0
+          - 1
+        problem_id:
+          type: integer
+          title: Problem Id
+          examples:
+          - 101
+        is_passed:
+          type: boolean
+          title: Is Passed
+          description: Whether all test cases passed
+          examples:
+          - true
+        points_earned:
+          type: integer
+          title: Points Earned
+          description: Points earned for this problem
+          examples:
+          - 20
         passed_tests:
           type: integer
           title: Passed Tests
           examples:
-          - 3
+          - 5
         total_tests:
           type: integer
           title: Total Tests
           examples:
-          - 3
+          - 5
         status:
           type: string
           title: Status
+          description: Submission status (e.g. accepted, wrong_answer)
           examples:
           - accepted
+        total_score_accumulated:
+          type: integer
+          title: Total Score Accumulated
+          description: Total points accumulated across all problems
+          examples:
+          - 45
+        score_percentage:
+          type: number
+          title: Score Percentage
+          description: Percentage of test cases passed for this problem
+          default: 100.0
+          examples:
+          - 100.0
         submitted_at:
           type: string
           format: date-time
           title: Submitted At
+          description: Timestamp of submission
       type: object
       required:
       - student_id
-      - score_percentage
+      - problem_id
+      - is_passed
+      - points_earned
       - passed_tests
       - total_tests
       - status
+      - total_score_accumulated
       - submitted_at
       title: CodeSubmitResponse
-      description: Grading verdict for the final exam submission.
+      description: Grading verdict for problem submission with points and total accumulated
+        score.
     ExamSessionCreate:
       properties:
         title:
@@ -478,35 +524,27 @@ components:
           maxLength: 255
           minLength: 3
           title: Title
-          description: Exam or problem title
+          description: Exam or session title
           examples:
-          - Pengecekan Bilangan Prima (Prime Number Checker)
-        description:
-          type: string
-          minLength: 10
-          title: Description
-          description: Detailed problem story and input/output specifications in Markdown
+          - Ujian Akhir Semester Pemrograman Dasar
+        duration_minutes:
+          type: integer
+          maximum: 360.0
+          minimum: 5.0
+          title: Duration Minutes
+          description: Exam duration in minutes
+          default: 90
           examples:
-          - Buat fungsi yang membaca sebuah integer `n` dari standard input, dan mencetak
-            `True` jika bilangan tersebut prima atau `False` jika bukan.
-        starter_code:
-          type: string
-          title: Starter Code
-          description: Python starter code template provided to the student
-          default: "def is_prime(n):\n    # Write your solution here\n    pass\n\n\
-            if __name__ == '__main__':\n    n = int(input())\n    print(is_prime(n))\n"
-          examples:
-          - "def is_prime(n):\n    # Tulis solusi Anda di sini\n    pass\n\nif __name__\
-            \ == '__main__':\n    n = int(input())\n    print(is_prime(n))\n"
+          - 90
         hint_quota:
           type: integer
           maximum: 10.0
           minimum: 1.0
           title: Hint Quota
-          description: Maximum number of Socratic hints permitted
-          default: 3
+          description: Default Socratic hint quota per student
+          default: 5
           examples:
-          - 3
+          - 5
         allow_syntax_hints:
           type: boolean
           title: Allow Syntax Hints
@@ -521,73 +559,49 @@ components:
           default: true
           examples:
           - true
-        test_cases:
+        problems:
           items:
-            $ref: '#/components/schemas/TestCaseCreate'
+            $ref: '#/components/schemas/ProblemCreate'
           type: array
           minItems: 1
-          title: Test Cases
-          description: List of test cases (at least one required)
-          examples:
-          - - expected_output: 'True
-
-                '
-              input_data: '5
-
-                '
-              is_hidden: false
-            - expected_output: 'False
-
-                '
-              input_data: '4
-
-                '
-              is_hidden: false
-            - expected_output: 'False
-
-                '
-              input_data: '1
-
-                '
-              is_hidden: true
+          title: Problems
+          description: List of challenge problems in this examination session
       type: object
       required:
       - title
-      - description
-      - test_cases
+      - problems
       title: ExamSessionCreate
-      description: Schema for teacher creating a new exam room.
+      description: Schema for teacher creating a new multi-problem exam room.
       example:
         allow_logic_hints: true
         allow_syntax_hints: true
-        description: Buat fungsi yang membaca sebuah integer n dan mencetak True jika
-          prima atau False jika bukan.
-        hint_quota: 3
-        starter_code: "def is_prime(n):\n    pass\n\nif __name__ == '__main__':\n\
-          \    n = int(input())\n    print(is_prime(n))\n"
-        test_cases:
-        - expected_output: 'True
+        duration_minutes: 90
+        hint_quota: 5
+        problems:
+        - category: Number Theory
+          constraints:
+          - 1 <= n <= 10^6
+          description: Write a function named is_prime(n)...
+          difficulty: Easy
+          points: 20
+          starter_code: "def is_prime(n):\n    pass\n"
+          test_cases:
+          - expected_output: 'True
 
-            '
-          input_data: '5
+              '
+            input_data: '7
 
-            '
-          is_hidden: false
-        - expected_output: 'False
+              '
+            is_hidden: false
+          - expected_output: 'False
 
-            '
-          input_data: '4
+              '
+            input_data: '4
 
-            '
-          is_hidden: false
-        - expected_output: 'False
-
-            '
-          input_data: '1
-
-            '
-          is_hidden: true
-        title: Pengecekan Bilangan Prima (Prime Number Checker)
+              '
+            is_hidden: true
+          title: Prime Number Verification
+        title: Ujian Akhir Semester Pemrograman Dasar
     ExamSessionDetailResponse:
       properties:
         id:
@@ -602,12 +616,19 @@ components:
         title:
           type: string
           title: Title
-        description:
+        duration_minutes:
+          type: integer
+          title: Duration Minutes
+        started_at:
           type: string
-          title: Description
-        starter_code:
-          type: string
-          title: Starter Code
+          format: date-time
+          title: Started At
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
         hint_quota:
           type: integer
           title: Hint Quota
@@ -620,16 +641,20 @@ components:
         is_active:
           type: boolean
           title: Is Active
+        problems:
+          items:
+            $ref: '#/components/schemas/ProblemResponse'
+          type: array
+          title: Problems
+          default: []
         created_at:
           type: string
           format: date-time
           title: Created At
-        test_cases:
-          items:
-            $ref: '#/components/schemas/TestCaseResponse'
-          type: array
-          title: Test Cases
-          default: []
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
         students:
           items:
             $ref: '#/components/schemas/StudentSummary'
@@ -641,13 +666,14 @@ components:
       - id
       - room_code
       - title
-      - description
-      - starter_code
+      - duration_minutes
+      - started_at
       - hint_quota
       - allow_syntax_hints
       - allow_logic_hints
       - is_active
       - created_at
+      - updated_at
       title: ExamSessionDetailResponse
       description: Full exam room details including active student roster.
     ExamSessionResponse:
@@ -664,12 +690,19 @@ components:
         title:
           type: string
           title: Title
-        description:
+        duration_minutes:
+          type: integer
+          title: Duration Minutes
+        started_at:
           type: string
-          title: Description
-        starter_code:
-          type: string
-          title: Starter Code
+          format: date-time
+          title: Started At
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
         hint_quota:
           type: integer
           title: Hint Quota
@@ -682,28 +715,33 @@ components:
         is_active:
           type: boolean
           title: Is Active
+        problems:
+          items:
+            $ref: '#/components/schemas/ProblemResponse'
+          type: array
+          title: Problems
+          default: []
         created_at:
           type: string
           format: date-time
           title: Created At
-        test_cases:
-          items:
-            $ref: '#/components/schemas/TestCaseResponse'
-          type: array
-          title: Test Cases
-          default: []
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
       type: object
       required:
       - id
       - room_code
       - title
-      - description
-      - starter_code
+      - duration_minutes
+      - started_at
       - hint_quota
       - allow_syntax_hints
       - allow_logic_hints
       - is_active
       - created_at
+      - updated_at
       title: ExamSessionResponse
       description: Schema for basic exam room details.
     HTTPValidationError:
@@ -754,24 +792,258 @@ components:
         environment: development
         status: healthy
         version: 1.0.0
+    ProblemCreate:
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          minLength: 3
+          title: Title
+          description: Problem title
+          examples:
+          - Prime Number Verification
+        difficulty:
+          type: string
+          enum:
+          - Easy
+          - Medium
+          - Hard
+          title: Difficulty
+          description: Problem difficulty tier
+          default: Easy
+          examples:
+          - Easy
+        points:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Points
+          description: Problem point weight
+          default: 20
+          examples:
+          - 20
+        category:
+          type: string
+          title: Category
+          description: Problem topical category
+          default: General
+          examples:
+          - Number Theory
+        description:
+          type: string
+          minLength: 5
+          title: Description
+          description: Problem description in Markdown format
+          examples:
+          - Write a function named is_prime(n) that checks if an integer is prime.
+        constraints:
+          items:
+            type: string
+          type: array
+          title: Constraints
+          description: Problem constraints and complexity bounds
+          examples:
+          - - 1 <= n <= 10^6
+            - Function must return a boolean
+        starter_code:
+          type: string
+          title: Starter Code
+          description: Python starter code template
+          default: "def solution():\n    pass\n"
+          examples:
+          - "def is_prime(n):\n    pass\n"
+        test_cases:
+          items:
+            $ref: '#/components/schemas/TestCaseCreate'
+          type: array
+          minItems: 1
+          title: Test Cases
+          description: List of automated test cases
+          examples:
+          - - expected_output: 'True
+
+                '
+              input_data: '7
+
+                '
+              is_hidden: false
+            - expected_output: 'False
+
+                '
+              input_data: '4
+
+                '
+              is_hidden: true
+      type: object
+      required:
+      - title
+      - description
+      - test_cases
+      title: ProblemCreate
+      description: Schema for creating a challenge problem within an exam session.
+    ProblemResponse:
+      properties:
+        id:
+          type: integer
+          title: Id
+        exam_session_id:
+          type: integer
+          title: Exam Session Id
+        title:
+          type: string
+          title: Title
+        difficulty:
+          type: string
+          title: Difficulty
+        points:
+          type: integer
+          title: Points
+        category:
+          type: string
+          title: Category
+        description:
+          type: string
+          title: Description
+        constraints:
+          items:
+            type: string
+          type: array
+          title: Constraints
+        starter_code:
+          type: string
+          title: Starter Code
+        test_cases:
+          items:
+            $ref: '#/components/schemas/TestCaseResponse'
+          type: array
+          title: Test Cases
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - exam_session_id
+      - title
+      - difficulty
+      - points
+      - category
+      - description
+      - constraints
+      - starter_code
+      - test_cases
+      - created_at
+      - updated_at
+      title: ProblemResponse
+      description: Comprehensive problem details including hidden test cases (for
+        teacher console).
+    PublicProblemResponse:
+      properties:
+        id:
+          type: integer
+          title: Id
+          description: Problem ID
+          examples:
+          - 101
+        title:
+          type: string
+          title: Title
+          description: Problem title
+          examples:
+          - Prime Number Verification
+        difficulty:
+          type: string
+          title: Difficulty
+          description: Difficulty
+          examples:
+          - Easy
+        points:
+          type: integer
+          title: Points
+          description: Point value
+          examples:
+          - 20
+        category:
+          type: string
+          title: Category
+          description: Category
+          examples:
+          - Number Theory
+        description:
+          type: string
+          title: Description
+          description: Markdown description
+          examples:
+          - Write a function named is_prime(n)...
+        constraints:
+          items:
+            type: string
+          type: array
+          title: Constraints
+          description: Problem constraints
+          examples:
+          - - 1 <= n <= 10^6
+            - Function must return a boolean
+        starter_code:
+          type: string
+          title: Starter Code
+          description: Starter template
+          examples:
+          - "def is_prime(n):\n    pass\n"
+        public_test_cases:
+          items:
+            $ref: '#/components/schemas/PublicTestCase'
+          type: array
+          title: Public Test Cases
+          description: Public sample test cases for preview and sandbox testing
+      type: object
+      required:
+      - id
+      - title
+      - difficulty
+      - points
+      - category
+      - description
+      - starter_code
+      title: PublicProblemResponse
+      description: Public problem details returned to student kiosks (hidden test
+        cases omitted).
     PublicTestCase:
       properties:
         id:
           type: integer
           title: Id
+          description: Test case ID
+          examples:
+          - 1
         input_data:
           type: string
           title: Input Data
+          description: Standard input data
+          examples:
+          - '7
+
+            '
         expected_output:
           type: string
           title: Expected Output
+          description: Expected output string
+          examples:
+          - 'True
+
+            '
       type: object
       required:
       - id
       - input_data
       - expected_output
       title: PublicTestCase
-      description: Public sample test case visible to students.
+      description: Public sample test case exposed to students.
     SocraticHintRequest:
       properties:
         student_id:
@@ -780,6 +1052,14 @@ components:
           description: Student session ID
           examples:
           - 1
+        problem_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Problem Id
+          description: Target problem ID
+          examples:
+          - 101
         source_code:
           type: string
           title: Source Code
@@ -903,7 +1183,7 @@ components:
           title: Student Name
           description: Full student name
           examples:
-          - Budi Pratama
+          - Willy Gregory
         student_id_number:
           type: string
           maxLength: 100
@@ -911,7 +1191,7 @@ components:
           title: Student Id Number
           description: Student ID / NIM
           examples:
-          - '13521001'
+          - '215150200111001'
       type: object
       required:
       - room_code
@@ -921,8 +1201,8 @@ components:
       description: Schema for student joining an exam room from the kiosk application.
       example:
         room_code: NAVI-8392
-        student_id_number: '13521001'
-        student_name: Budi Pratama
+        student_id_number: '215150200111001'
+        student_name: Willy Gregory
     StudentJoinResponse:
       properties:
         student_id:
@@ -936,64 +1216,77 @@ components:
           title: Room Code
           examples:
           - NAVI-8392
-        title:
+        student_name:
           type: string
-          title: Title
+          title: Student Name
           examples:
-          - Pengecekan Bilangan Prima
-        description:
+          - Willy Gregory
+        student_id_number:
           type: string
-          title: Description
+          title: Student Id Number
           examples:
-          - Buat fungsi yang membaca bilangan prima...
-        starter_code:
-          type: string
-          title: Starter Code
+          - '215150200111001'
+        duration_minutes:
+          type: integer
+          title: Duration Minutes
+          description: Exam duration in minutes
+          default: 90
           examples:
-          - "def is_prime(n):\n    pass\n"
+          - 90
+        expires_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expires At
+          description: Absolute expiration timestamp
+          examples:
+          - '2026-10-27T10:30:00Z'
         hint_quota:
           type: integer
           title: Hint Quota
+          description: Total hint quota
+          default: 5
           examples:
-          - 3
+          - 5
         hints_used:
           type: integer
           title: Hints Used
+          description: Hints consumed so far
+          default: 0
           examples:
           - 0
         remaining_hints:
           type: integer
           title: Remaining Hints
+          description: Remaining hints available
+          default: 5
           examples:
-          - 3
+          - 5
         allow_syntax_hints:
           type: boolean
           title: Allow Syntax Hints
+          default: true
           examples:
           - true
         allow_logic_hints:
           type: boolean
           title: Allow Logic Hints
+          default: true
           examples:
           - true
-        public_test_cases:
+        problems:
           items:
-            $ref: '#/components/schemas/PublicTestCase'
+            $ref: '#/components/schemas/PublicProblemResponse'
           type: array
-          title: Public Test Cases
-          default: []
+          title: Problems
+          description: List of problems in this exam session
       type: object
       required:
       - student_id
       - room_code
-      - title
-      - description
-      - starter_code
-      - hint_quota
-      - hints_used
-      - remaining_hints
-      - allow_syntax_hints
-      - allow_logic_hints
+      - student_name
+      - student_id_number
       title: StudentJoinResponse
       description: Payload delivered to student kiosk upon successful room entry.
     StudentStatusResponse:
@@ -1001,29 +1294,63 @@ components:
         student_id:
           type: integer
           title: Student Id
+          examples:
+          - 1
         student_name:
           type: string
           title: Student Name
+          examples:
+          - Willy Gregory
         student_id_number:
           type: string
           title: Student Id Number
+          examples:
+          - '215150200111001'
         hints_used:
           type: integer
           title: Hints Used
+          examples:
+          - 1
         violation_count:
           type: integer
           title: Violation Count
-        last_status:
-          type: string
-          title: Last Status
+          examples:
+          - 0
+        solved_problem_ids:
+          items:
+            type: integer
+          type: array
+          title: Solved Problem Ids
+          examples:
+          - - 101
+        in_progress_problem_ids:
+          items:
+            type: integer
+          type: array
+          title: In Progress Problem Ids
+          examples:
+          - - 102
+        total_score:
+          type: integer
+          title: Total Score
+          description: Accumulated score across all problems
+          default: 0
+          examples:
+          - 20
         is_submitted:
           type: boolean
           title: Is Submitted
-        submitted_code:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Submitted Code
+          description: Whether final exam is finalized
+          default: false
+          examples:
+          - false
+        time_remaining_seconds:
+          type: integer
+          title: Time Remaining Seconds
+          description: Seconds left before expiry
+          default: 0
+          examples:
+          - 3420
       type: object
       required:
       - student_id
@@ -1031,10 +1358,8 @@ components:
       - student_id_number
       - hints_used
       - violation_count
-      - last_status
-      - is_submitted
       title: StudentStatusResponse
-      description: Current live status of a student participant.
+      description: Current live status and progress of a student participant.
     StudentSummary:
       properties:
         id:
@@ -1052,6 +1377,10 @@ components:
         violation_count:
           type: integer
           title: Violation Count
+        total_score:
+          type: integer
+          title: Total Score
+          default: 0
         last_status:
           type: string
           title: Last Status
@@ -1127,7 +1456,7 @@ components:
           description: Standard input passed to the program
           default: ''
           examples:
-          - '5
+          - '7
 
             '
         expected_output:
@@ -1158,7 +1487,7 @@ components:
           description: Standard input passed to the program
           default: ''
           examples:
-          - '5
+          - '7
 
             '
         expected_output:
@@ -1179,9 +1508,9 @@ components:
         id:
           type: integer
           title: Id
-        exam_session_id:
+        problem_id:
           type: integer
-          title: Exam Session Id
+          title: Problem Id
         created_at:
           type: string
           format: date-time
@@ -1190,10 +1519,10 @@ components:
       required:
       - expected_output
       - id
-      - exam_session_id
+      - problem_id
       - created_at
       title: TestCaseResponse
-      description: Schema for returning test case details.
+      description: Schema for returning full test case details (for teachers).
     TestCaseRunResult:
       properties:
         test_case_id:
@@ -1280,6 +1609,14 @@ components:
             etc.'
           examples:
           - alt_tab
+        is_kiosk_active:
+          type: boolean
+          title: Is Kiosk Active
+          description: Whether the kiosk low-level keyboard/window hook is currently
+            active
+          default: true
+          examples:
+          - true
         details:
           anyOf:
           - type: string

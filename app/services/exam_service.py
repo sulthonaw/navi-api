@@ -1,15 +1,16 @@
-"""Business logic service for Exam Sessions, Students, Hints, and Violations."""
+"""Business logic service for Exam Sessions, Multi-Problem Challenges, Hints, and Violations."""
 
 import random
 import string
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.exam_session import ExamSession, TestCase
+from app.models.problem import Problem, StudentProblemSubmission
 from app.models.student_session import StudentSession
 from app.models.violation_log import ViolationLog
 from app.schemas.code_execution import (
@@ -19,8 +20,9 @@ from app.schemas.code_execution import (
     CodeSubmitResponse,
 )
 from app.schemas.exam_session import ExamSessionCreate
+from app.schemas.problem import PublicProblemResponse, PublicTestCase
 from app.schemas.socratic_hint import SocraticHintRequest, SocraticHintResponse
-from app.schemas.student import StudentJoinRequest, StudentJoinResponse
+from app.schemas.student import StudentJoinRequest, StudentJoinResponse, StudentStatusResponse
 from app.schemas.violation import ViolationReportRequest, ViolationReportResponse
 from app.services.execution_service import execution_service
 from app.services.socratic_engine import socratic_engine
@@ -28,7 +30,7 @@ from app.services.websocket_manager import websocket_manager
 
 
 class ExamService:
-    """Coordinates exam business workflows and persistence."""
+    """Coordinates multi-problem exam business workflows and persistence."""
 
     @staticmethod
     def _generate_room_code() -> str:
@@ -42,8 +44,7 @@ class ExamService:
         db: AsyncSession,
         payload: ExamSessionCreate,
     ) -> ExamSession:
-        """Create a new exam room with test cases and a unique room code."""
-        # Ensure room code uniqueness
+        """Create a new exam room with multi-problem challenges and timer."""
         room_code = self._generate_room_code()
         while True:
             existing = await db.scalar(
@@ -53,11 +54,15 @@ class ExamService:
                 break
             room_code = self._generate_room_code()
 
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(minutes=payload.duration_minutes)
+
         exam_session = ExamSession(
             room_code=room_code,
             title=payload.title,
-            description=payload.description,
-            starter_code=payload.starter_code,
+            duration_minutes=payload.duration_minutes,
+            started_at=now,
+            expires_at=expires_at,
             hint_quota=payload.hint_quota,
             allow_syntax_hints=payload.allow_syntax_hints,
             allow_logic_hints=payload.allow_logic_hints,
@@ -66,19 +71,32 @@ class ExamService:
         db.add(exam_session)
         await db.flush()
 
-        # Add test cases
-        for tc_data in payload.test_cases:
-            test_case = TestCase(
+        # Add problems and their test cases
+        for prob_data in payload.problems:
+            problem = Problem(
                 exam_session_id=exam_session.id,
-                input_data=tc_data.input_data,
-                expected_output=tc_data.expected_output,
-                is_hidden=tc_data.is_hidden,
+                title=prob_data.title,
+                difficulty=prob_data.difficulty,
+                points=prob_data.points,
+                category=prob_data.category,
+                description=prob_data.description,
+                constraints=prob_data.constraints,
+                starter_code=prob_data.starter_code,
             )
-            db.add(test_case)
+            db.add(problem)
+            await db.flush()
+
+            for tc_data in prob_data.test_cases:
+                test_case = TestCase(
+                    problem_id=problem.id,
+                    input_data=tc_data.input_data,
+                    expected_output=tc_data.expected_output,
+                    is_hidden=tc_data.is_hidden,
+                )
+                db.add(test_case)
 
         await db.commit()
-        await db.refresh(exam_session)
-        return exam_session
+        return await self.get_exam_session_by_code(db, room_code, include_students=False)
 
     async def get_exam_session_by_code(
         self,
@@ -86,12 +104,14 @@ class ExamService:
         room_code: str,
         include_students: bool = True,
     ) -> ExamSession:
-        """Fetch exam room by its invitation code."""
+        """Fetch exam room by its invitation code with related problems and test cases."""
         query = select(ExamSession).where(ExamSession.room_code == room_code)
+        query = query.options(
+            selectinload(ExamSession.problems).selectinload(Problem.test_cases),
+        )
         if include_students:
             query = query.options(
                 selectinload(ExamSession.students),
-                selectinload(ExamSession.test_cases),
             )
         result = await db.execute(query)
         session = result.scalar_one_or_none()
@@ -117,7 +137,6 @@ class ExamService:
                 detail="This exam room is no longer active.",
             )
 
-        # Check if student already enrolled in this session
         existing_student = await db.scalar(
             select(StudentSession).where(
                 StudentSession.exam_session_id == room.id,
@@ -134,6 +153,7 @@ class ExamService:
                 student_id_number=payload.student_id_number,
                 hints_used=0,
                 violation_count=0,
+                total_score=0,
                 last_status="in_progress",
                 is_submitted=False,
             )
@@ -141,7 +161,7 @@ class ExamService:
             await db.commit()
             await db.refresh(student)
 
-            # Broadcast new student arrival to teacher dashboard
+            # Broadcast arrival to teacher dashboard
             await websocket_manager.broadcast_to_teachers(
                 room_code=room.room_code,
                 event_type="STUDENT_JOINED",
@@ -151,25 +171,51 @@ class ExamService:
                     "student_id_number": student.student_id_number,
                     "hints_used": student.hints_used,
                     "violation_count": student.violation_count,
+                    "total_score": student.total_score,
                     "last_status": student.last_status,
                     "started_at": student.started_at.isoformat(),
                 },
             )
 
-        public_cases = [tc for tc in room.test_cases if not tc.is_hidden]
+        # Build public problems array (excluding hidden test cases)
+        public_problems: list[PublicProblemResponse] = []
+        for prob in room.problems:
+            public_cases = [
+                PublicTestCase(
+                    id=tc.id,
+                    input_data=tc.input_data,
+                    expected_output=tc.expected_output,
+                )
+                for tc in prob.test_cases
+                if not tc.is_hidden
+            ]
+            public_problems.append(
+                PublicProblemResponse(
+                    id=prob.id,
+                    title=prob.title,
+                    difficulty=prob.difficulty,
+                    points=prob.points,
+                    category=prob.category,
+                    description=prob.description,
+                    constraints=prob.constraints or [],
+                    starter_code=prob.starter_code,
+                    public_test_cases=public_cases,
+                )
+            )
 
         return StudentJoinResponse(
             student_id=student.id,
             room_code=room.room_code,
-            title=room.title,
-            description=room.description,
-            starter_code=room.starter_code,
+            student_name=student.student_name,
+            student_id_number=student.student_id_number,
+            duration_minutes=room.duration_minutes,
+            expires_at=room.expires_at,
             hint_quota=room.hint_quota,
             hints_used=student.hints_used,
             remaining_hints=max(0, room.hint_quota - student.hints_used),
             allow_syntax_hints=room.allow_syntax_hints,
             allow_logic_hints=room.allow_logic_hints,
-            public_test_cases=public_cases,
+            problems=public_problems,
         )
 
     async def run_student_code(
@@ -177,7 +223,7 @@ class ExamService:
         db: AsyncSession,
         payload: CodeRunRequest,
     ) -> CodeRunResponse:
-        """Run student code against public test cases and broadcast live status."""
+        """Run student code against public sample test cases for a specific problem."""
         student = await db.get(StudentSession, payload.student_id)
         if not student:
             raise HTTPException(
@@ -192,10 +238,18 @@ class ExamService:
                 detail="Associated exam room not found.",
             )
 
-        # Load public test cases
+        # Fetch problem
+        problem = await db.get(Problem, payload.problem_id)
+        if not problem or problem.exam_session_id != room.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Problem #{payload.problem_id} not found in this exam session.",
+            )
+
+        # Load public test cases for this problem
         result = await db.execute(
             select(TestCase).where(
-                TestCase.exam_session_id == room.id,
+                TestCase.problem_id == problem.id,
                 TestCase.is_hidden == False,
             )
         )
@@ -225,6 +279,7 @@ class ExamService:
             event_type="CODE_STATUS_UPDATED",
             data={
                 "student_id": student.id,
+                "problem_id": problem.id,
                 "student_name": student.student_name,
                 "last_status": student.last_status,
                 "has_syntax_error": run_response.has_syntax_error,
@@ -235,12 +290,12 @@ class ExamService:
 
         return run_response
 
-    async def request_socratic_hint(
+    async def submit_problem_code(
         self,
         db: AsyncSession,
-        payload: SocraticHintRequest,
-    ) -> SocraticHintResponse:
-        """Provide a Socratic hint while enforcing teacher permissions and quota limits."""
+        payload: CodeSubmitRequest,
+    ) -> CodeSubmitResponse:
+        """Grade student solution against full test suite for a problem and accumulate score."""
         student = await db.get(StudentSession, payload.student_id)
         if not student:
             raise HTTPException(
@@ -255,7 +310,147 @@ class ExamService:
                 detail="Associated exam room not found.",
             )
 
-        # Verify teacher permission policies
+        problem = await db.get(Problem, payload.problem_id)
+        if not problem or problem.exam_session_id != room.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Problem #{payload.problem_id} not found in this exam session.",
+            )
+
+        # Fetch all test cases for this problem (public + hidden)
+        result = await db.execute(select(TestCase).where(TestCase.problem_id == problem.id))
+        all_cases = result.scalars().all()
+
+        run_response = await execution_service.run_test_cases(
+            source_code=payload.source_code,
+            test_cases=all_cases,
+            include_hidden=True,
+        )
+
+        total = len(all_cases)
+        passed = run_response.passed_tests
+        is_passed = run_response.all_passed
+
+        if run_response.has_syntax_error:
+            submission_status = "syntax_error"
+        elif is_passed:
+            submission_status = "accepted"
+        else:
+            submission_status = "wrong_answer"
+
+        points_earned = problem.points if is_passed else 0
+
+        # Upsert problem submission record
+        existing_sub = await db.scalar(
+            select(StudentProblemSubmission).where(
+                StudentProblemSubmission.student_session_id == student.id,
+                StudentProblemSubmission.problem_id == problem.id,
+            )
+        )
+
+        if existing_sub:
+            existing_sub.is_passed = is_passed
+            existing_sub.points_earned = points_earned
+            existing_sub.passed_tests = passed
+            existing_sub.total_tests = total
+            existing_sub.status = submission_status
+            existing_sub.submitted_code = payload.source_code
+            existing_sub.submitted_at = datetime.now(UTC)
+        else:
+            new_sub = StudentProblemSubmission(
+                student_session_id=student.id,
+                problem_id=problem.id,
+                is_passed=is_passed,
+                points_earned=points_earned,
+                passed_tests=passed,
+                total_tests=total,
+                status=submission_status,
+                submitted_code=payload.source_code,
+                submitted_at=datetime.now(UTC),
+            )
+            db.add(new_sub)
+
+        await db.flush()
+
+        # Recompute total score accumulated across all problems
+        total_score_res = await db.scalar(
+            select(func.sum(StudentProblemSubmission.points_earned)).where(
+                StudentProblemSubmission.student_session_id == student.id
+            )
+        )
+        total_accumulated = int(total_score_res or 0)
+        student.total_score = total_accumulated
+        student.last_status = submission_status
+        student.submitted_at = datetime.now(UTC)
+
+        # Check if all problems in room are solved
+        total_problems = await db.scalar(
+            select(func.count(Problem.id)).where(Problem.exam_session_id == room.id)
+        )
+        solved_count = await db.scalar(
+            select(func.count(StudentProblemSubmission.id)).where(
+                StudentProblemSubmission.student_session_id == student.id,
+                StudentProblemSubmission.is_passed == True,
+            )
+        )
+        if total_problems and solved_count and solved_count >= total_problems:
+            student.is_submitted = True
+
+        await db.commit()
+
+        # Broadcast submission event to teacher
+        await websocket_manager.broadcast_to_teachers(
+            room_code=room.room_code,
+            event_type="PROBLEM_SUBMITTED",
+            data={
+                "student_id": student.id,
+                "problem_id": problem.id,
+                "student_name": student.student_name,
+                "is_passed": is_passed,
+                "points_earned": points_earned,
+                "passed_tests": passed,
+                "total_tests": total,
+                "status": submission_status,
+                "total_score_accumulated": total_accumulated,
+                "submitted_at": student.submitted_at.isoformat(),
+            },
+        )
+
+        score_pct = (passed / total * 100.0) if total > 0 else 0.0
+
+        return CodeSubmitResponse(
+            student_id=student.id,
+            problem_id=problem.id,
+            is_passed=is_passed,
+            points_earned=points_earned,
+            passed_tests=passed,
+            total_tests=total,
+            status=submission_status,
+            total_score_accumulated=total_accumulated,
+            score_percentage=round(score_pct, 2),
+            submitted_at=student.submitted_at,
+        )
+
+    async def request_socratic_hint(
+        self,
+        db: AsyncSession,
+        payload: SocraticHintRequest,
+    ) -> SocraticHintResponse:
+        """Provide a Socratic hint with optional problem-specific context."""
+        student = await db.get(StudentSession, payload.student_id)
+        if not student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Student session #{payload.student_id} not found.",
+            )
+
+        room = await db.get(ExamSession, student.exam_session_id)
+        if not room:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated exam room not found.",
+            )
+
         is_syntax = "syntax" in payload.error_type.lower() or "indent" in payload.error_type.lower()
         if is_syntax and not room.allow_syntax_hints:
             raise HTTPException(
@@ -268,13 +463,22 @@ class ExamService:
                 detail="Logic/Runtime error hints are disabled for this exam session.",
             )
 
-        # Check remaining quota
         remaining = room.hint_quota - student.hints_used
         if remaining <= 0:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Hint quota exhausted! Used {student.hints_used} of {room.hint_quota} hints.",
             )
+
+        problem_title = None
+        problem_description = None
+        problem_constraints = None
+        if payload.problem_id:
+            problem = await db.get(Problem, payload.problem_id)
+            if problem:
+                problem_title = problem.title
+                problem_description = problem.description
+                problem_constraints = problem.constraints
 
         # Generate hint using Gemini or heuristic fallback
         hint_text, engine_used = await socratic_engine.generate_hint(
@@ -283,20 +487,22 @@ class ExamService:
             error_message=payload.error_message,
             faulty_line_number=payload.faulty_line_number,
             language=payload.language,
+            problem_title=problem_title,
+            problem_description=problem_description,
+            problem_constraints=problem_constraints,
         )
 
-        # Decrement quota
         student.hints_used += 1
         await db.commit()
 
         new_remaining = max(0, room.hint_quota - student.hints_used)
 
-        # Notify teacher dashboard of hint consumption
         await websocket_manager.broadcast_to_teachers(
             room_code=room.room_code,
             event_type="HINT_REQUESTED",
             data={
                 "student_id": student.id,
+                "problem_id": payload.problem_id,
                 "student_name": student.student_name,
                 "hints_used": student.hints_used,
                 "remaining_hints": new_remaining,
@@ -319,7 +525,7 @@ class ExamService:
         db: AsyncSession,
         payload: ViolationReportRequest,
     ) -> ViolationReportResponse:
-        """Record an anti-cheat violation and immediately sound alarm on teacher dashboard."""
+        """Record an anti-cheat violation including kiosk hook status and sound alarm."""
         student = await db.get(StudentSession, payload.student_id)
         if not student:
             raise HTTPException(
@@ -334,20 +540,18 @@ class ExamService:
                 detail="Associated exam room not found.",
             )
 
-        # Increment violation counter
         student.violation_count += 1
 
-        # Add violation log entry
         log_entry = ViolationLog(
             student_session_id=student.id,
             event_type=payload.event_type,
+            is_kiosk_active=payload.is_kiosk_active,
             details=payload.details,
             timestamp=datetime.now(UTC),
         )
         db.add(log_entry)
         await db.commit()
 
-        # Real-time WebSocket alarm broadcast to teacher dashboard
         await websocket_manager.broadcast_to_teachers(
             room_code=room.room_code,
             event_type="VIOLATION_DETECTED",
@@ -356,6 +560,7 @@ class ExamService:
                 "student_name": student.student_name,
                 "student_id_number": student.student_id_number,
                 "event_type": payload.event_type,
+                "is_kiosk_active": payload.is_kiosk_active,
                 "details": payload.details,
                 "violation_count": student.violation_count,
                 "timestamp": log_entry.timestamp.isoformat(),
@@ -369,75 +574,54 @@ class ExamService:
             message="Violation recorded and broadcasted to teacher dashboard.",
         )
 
-    async def submit_exam(
+    async def get_student_status(
         self,
         db: AsyncSession,
-        payload: CodeSubmitRequest,
-    ) -> CodeSubmitResponse:
-        """Grade student solution against all test cases (public + hidden) and finalize submission."""
-        student = await db.get(StudentSession, payload.student_id)
+        student_id: int,
+    ) -> StudentStatusResponse:
+        """Fetch current progress, solved challenges, accumulated score, and time remaining."""
+        student = await db.scalar(
+            select(StudentSession)
+            .where(StudentSession.id == student_id)
+            .options(
+                selectinload(StudentSession.submissions),
+                selectinload(StudentSession.exam_session),
+            )
+        )
         if not student:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Student session #{payload.student_id} not found.",
+                detail=f"Student #{student_id} not found.",
             )
 
-        room = await db.get(ExamSession, student.exam_session_id)
-        if not room:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Associated exam room not found.",
-            )
+        room = student.exam_session
+        solved_problem_ids = [sub.problem_id for sub in student.submissions if sub.is_passed]
+        in_progress_problem_ids = [
+            sub.problem_id
+            for sub in student.submissions
+            if not sub.is_passed and sub.problem_id not in solved_problem_ids
+        ]
 
-        # Fetch all test cases
-        result = await db.execute(select(TestCase).where(TestCase.exam_session_id == room.id))
-        all_cases = result.scalars().all()
+        now = datetime.now(UTC)
+        time_remaining_seconds = 0
+        if room and room.expires_at:
+            expires_at = room.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            delta = (expires_at - now).total_seconds()
+            time_remaining_seconds = max(0, int(delta))
 
-        run_response = await execution_service.run_test_cases(
-            source_code=payload.source_code,
-            test_cases=all_cases,
-            include_hidden=True,
-        )
-
-        total = len(all_cases)
-        passed = run_response.passed_tests
-        score = (passed / total * 100.0) if total > 0 else 0.0
-
-        if run_response.has_syntax_error:
-            submission_status = "syntax_error"
-        elif run_response.all_passed:
-            submission_status = "accepted"
-        else:
-            submission_status = "wrong_answer"
-
-        student.is_submitted = True
-        student.submitted_code = payload.source_code
-        student.last_status = submission_status
-        student.submitted_at = datetime.now(UTC)
-        await db.commit()
-
-        # Broadcast submission event to teacher
-        await websocket_manager.broadcast_to_teachers(
-            room_code=room.room_code,
-            event_type="EXAM_SUBMITTED",
-            data={
-                "student_id": student.id,
-                "student_name": student.student_name,
-                "score_percentage": round(score, 2),
-                "passed_tests": passed,
-                "total_tests": total,
-                "status": submission_status,
-                "submitted_at": student.submitted_at.isoformat(),
-            },
-        )
-
-        return CodeSubmitResponse(
+        return StudentStatusResponse(
             student_id=student.id,
-            score_percentage=round(score, 2),
-            passed_tests=passed,
-            total_tests=total,
-            status=submission_status,
-            submitted_at=student.submitted_at,
+            student_name=student.student_name,
+            student_id_number=student.student_id_number,
+            hints_used=student.hints_used,
+            violation_count=student.violation_count,
+            solved_problem_ids=solved_problem_ids,
+            in_progress_problem_ids=in_progress_problem_ids,
+            total_score=student.total_score,
+            is_submitted=student.is_submitted,
+            time_remaining_seconds=time_remaining_seconds,
         )
 
     async def close_exam_session(
@@ -450,7 +634,6 @@ class ExamService:
         room.is_active = False
         await db.commit()
 
-        # Notify room that exam has concluded
         await websocket_manager.broadcast_to_room(
             room_code=room.room_code,
             event_type="EXAM_CLOSED",
