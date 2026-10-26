@@ -1,0 +1,1347 @@
+openapi: 3.1.0
+info:
+  title: Navi Exam & Socratic Engine API
+  description: High-integrity Python examination backend featuring a kiosk-locking
+    environment, Socratic AI tutoring powered by Google Gemini, native AST syntax
+    validation, and real-time anti-cheat teacher monitoring.
+  version: 1.0.0
+paths:
+  /api/v1/health:
+    get:
+      tags:
+      - System & Health
+      summary: Check server health and database status
+      description: Returns overall health status, version, runtime environment, and
+        database connectivity.
+      operationId: check_health_api_v1_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/v1/rooms:
+    post:
+      tags:
+      - Exam Sessions
+      summary: Create a new exam session
+      description: Allows a teacher to create a new exam room with starter code, test
+        cases, and hint rules. Returns a unique room code.
+      operationId: create_exam_room_api_v1_rooms_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExamSessionCreate'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExamSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rooms/{room_code}:
+    get:
+      tags:
+      - Exam Sessions
+      summary: Get exam room details and student roster
+      description: Fetches room status, problem statement, test cases, and the list
+        of active students for the teacher's live dashboard.
+      operationId: get_exam_room_api_v1_rooms__room_code__get
+      parameters:
+      - name: room_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Room Code
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExamSessionDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rooms/{room_code}/close:
+    patch:
+      tags:
+      - Exam Sessions
+      summary: Conclude and close an exam session
+      description: Marks the exam room as inactive and broadcasts a conclusion notification
+        to all connected clients.
+      operationId: close_exam_room_api_v1_rooms__room_code__close_patch
+      parameters:
+      - name: room_code
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Room Code
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExamSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/students/join:
+    post:
+      tags:
+      - Student Sessions
+      summary: Join an exam room from student kiosk
+      description: Validates room code, registers student participant, and delivers
+        the problem story, starter code, and hint quota.
+      operationId: join_exam_room_api_v1_students_join_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentJoinRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentJoinResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/students/{student_id}:
+    get:
+      tags:
+      - Student Sessions
+      summary: Get current student status and quota
+      description: Returns current metrics for a specific student, including hint
+        usage and violation counter.
+      operationId: get_student_status_api_v1_students__student_id__get
+      parameters:
+      - name: student_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Student Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/code/run:
+    post:
+      tags:
+      - Code Execution
+      summary: Run code against sample test cases
+      description: Validates Python syntax via native AST, then executes code against
+        sample test cases in an isolated subprocess sandbox.
+      operationId: run_code_api_v1_code_run_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeRunRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeRunResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/code/submit:
+    post:
+      tags:
+      - Code Execution
+      summary: Submit final exam solution for grading
+      description: Evaluates student solution against all test cases (both public
+        and hidden), computes score percentage, and marks exam as submitted.
+      operationId: submit_exam_code_api_v1_code_submit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeSubmitRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeSubmitResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/hints/request:
+    post:
+      tags:
+      - Socratic AI Engine
+      summary: Request a Socratic hint for an error
+      description: Invokes the Google Gemini Socratic tutor engine with strict code-concealment
+        guardrails. Decrements student's hint quota and returns reflective guiding
+        questions pointing to the specific error line.
+      operationId: request_socratic_hint_api_v1_hints_request_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SocraticHintRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocraticHintResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/violations:
+    post:
+      tags:
+      - Violations & Anti-Cheat
+      summary: Report an anti-cheat kiosk violation
+      description: Logged when student kiosk detects window blur, Alt+Tab, or unauthorized
+        keys. Immediately alerts teacher dashboard via WebSockets.
+      operationId: report_violation_api_v1_violations_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ViolationReportRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ViolationReportResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      tags:
+      - System & Health
+      summary: Root healthcheck probe
+      description: Top-level health check endpoint for container orchestrators and
+        load balancers.
+      operationId: root_health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /export-openapi:
+    get:
+      tags:
+      - System & Health
+      summary: Export raw OpenAPI schema
+      description: Returns the full OpenAPI 3.1 JSON schema for frontend TypeScript
+        client generation.
+      operationId: export_openapi_schema_export_openapi_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    CodeRunRequest:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+          description: Student session ID
+          examples:
+          - 1
+        source_code:
+          type: string
+          title: Source Code
+          description: Python 3 source code written by student
+          examples:
+          - "def is_prime(n):\n    if n <= 1:\n        return False\n    for i in\
+            \ range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            return\
+            \ False\n    return True\n\nif __name__ == '__main__':\n    n = int(input())\n\
+            \    print(is_prime(n))\n"
+      type: object
+      required:
+      - student_id
+      - source_code
+      title: CodeRunRequest
+      description: Schema for running student code against public test cases.
+      example:
+        source_code: "def is_prime(n):\n    if n <= 1:\n        return False\n   \
+          \ for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n        \
+          \    return False\n    return True\n\nif __name__ == '__main__':\n    n\
+          \ = int(input())\n    print(is_prime(n))\n"
+        student_id: 1
+    CodeRunResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+          description: Whether all evaluated test cases passed
+          examples:
+          - true
+        has_syntax_error:
+          type: boolean
+          title: Has Syntax Error
+          default: false
+          examples:
+          - false
+        syntax_error_details:
+          anyOf:
+          - $ref: '#/components/schemas/SyntaxErrorDetail'
+          - type: 'null'
+        total_tests:
+          type: integer
+          title: Total Tests
+          examples:
+          - 2
+        passed_tests:
+          type: integer
+          title: Passed Tests
+          examples:
+          - 2
+        all_passed:
+          type: boolean
+          title: All Passed
+          examples:
+          - true
+        test_results:
+          items:
+            $ref: '#/components/schemas/TestCaseRunResult'
+          type: array
+          title: Test Results
+          default: []
+        stdout:
+          type: string
+          title: Stdout
+          default: ''
+          examples:
+          - 'True
+
+            '
+        stderr:
+          type: string
+          title: Stderr
+          default: ''
+          examples:
+          - ''
+      type: object
+      required:
+      - success
+      - total_tests
+      - passed_tests
+      - all_passed
+      title: CodeRunResponse
+      description: Overall outcome of code execution against test cases.
+      example:
+        all_passed: true
+        has_syntax_error: false
+        passed_tests: 2
+        stderr: ''
+        stdout: 'True
+
+          '
+        success: true
+        test_results:
+        - actual_output: 'True
+
+            '
+          execution_time_ms: 15.2
+          expected_output: 'True
+
+            '
+          input_data: '5
+
+            '
+          is_hidden: false
+          passed: true
+          test_case_id: 1
+        total_tests: 2
+    CodeSubmitRequest:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+          description: Student session ID
+          examples:
+          - 1
+        source_code:
+          type: string
+          title: Source Code
+          description: Final Python 3 source code
+          examples:
+          - "def is_prime(n):\n    return n > 1\n"
+      type: object
+      required:
+      - student_id
+      - source_code
+      title: CodeSubmitRequest
+      description: Schema for final exam answer submission.
+    CodeSubmitResponse:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+        score_percentage:
+          type: number
+          title: Score Percentage
+          examples:
+          - 100.0
+        passed_tests:
+          type: integer
+          title: Passed Tests
+          examples:
+          - 3
+        total_tests:
+          type: integer
+          title: Total Tests
+          examples:
+          - 3
+        status:
+          type: string
+          title: Status
+          examples:
+          - accepted
+        submitted_at:
+          type: string
+          format: date-time
+          title: Submitted At
+      type: object
+      required:
+      - student_id
+      - score_percentage
+      - passed_tests
+      - total_tests
+      - status
+      - submitted_at
+      title: CodeSubmitResponse
+      description: Grading verdict for the final exam submission.
+    ExamSessionCreate:
+      properties:
+        title:
+          type: string
+          maxLength: 255
+          minLength: 3
+          title: Title
+          description: Exam or problem title
+          examples:
+          - Pengecekan Bilangan Prima (Prime Number Checker)
+        description:
+          type: string
+          minLength: 10
+          title: Description
+          description: Detailed problem story and input/output specifications in Markdown
+          examples:
+          - Buat fungsi yang membaca sebuah integer `n` dari standard input, dan mencetak
+            `True` jika bilangan tersebut prima atau `False` jika bukan.
+        starter_code:
+          type: string
+          title: Starter Code
+          description: Python starter code template provided to the student
+          default: "def is_prime(n):\n    # Write your solution here\n    pass\n\n\
+            if __name__ == '__main__':\n    n = int(input())\n    print(is_prime(n))\n"
+          examples:
+          - "def is_prime(n):\n    # Tulis solusi Anda di sini\n    pass\n\nif __name__\
+            \ == '__main__':\n    n = int(input())\n    print(is_prime(n))\n"
+        hint_quota:
+          type: integer
+          maximum: 10.0
+          minimum: 1.0
+          title: Hint Quota
+          description: Maximum number of Socratic hints permitted
+          default: 3
+          examples:
+          - 3
+        allow_syntax_hints:
+          type: boolean
+          title: Allow Syntax Hints
+          description: Enable Socratic hints for syntax errors
+          default: true
+          examples:
+          - true
+        allow_logic_hints:
+          type: boolean
+          title: Allow Logic Hints
+          description: Enable Socratic hints for runtime/logic errors
+          default: true
+          examples:
+          - true
+        test_cases:
+          items:
+            $ref: '#/components/schemas/TestCaseCreate'
+          type: array
+          minItems: 1
+          title: Test Cases
+          description: List of test cases (at least one required)
+          examples:
+          - - expected_output: 'True
+
+                '
+              input_data: '5
+
+                '
+              is_hidden: false
+            - expected_output: 'False
+
+                '
+              input_data: '4
+
+                '
+              is_hidden: false
+            - expected_output: 'False
+
+                '
+              input_data: '1
+
+                '
+              is_hidden: true
+      type: object
+      required:
+      - title
+      - description
+      - test_cases
+      title: ExamSessionCreate
+      description: Schema for teacher creating a new exam room.
+      example:
+        allow_logic_hints: true
+        allow_syntax_hints: true
+        description: Buat fungsi yang membaca sebuah integer n dan mencetak True jika
+          prima atau False jika bukan.
+        hint_quota: 3
+        starter_code: "def is_prime(n):\n    pass\n\nif __name__ == '__main__':\n\
+          \    n = int(input())\n    print(is_prime(n))\n"
+        test_cases:
+        - expected_output: 'True
+
+            '
+          input_data: '5
+
+            '
+          is_hidden: false
+        - expected_output: 'False
+
+            '
+          input_data: '4
+
+            '
+          is_hidden: false
+        - expected_output: 'False
+
+            '
+          input_data: '1
+
+            '
+          is_hidden: true
+        title: Pengecekan Bilangan Prima (Prime Number Checker)
+    ExamSessionDetailResponse:
+      properties:
+        id:
+          type: integer
+          title: Id
+        room_code:
+          type: string
+          title: Room Code
+          description: Unique 8-character room invitation code
+          examples:
+          - NAVI-8392
+        title:
+          type: string
+          title: Title
+        description:
+          type: string
+          title: Description
+        starter_code:
+          type: string
+          title: Starter Code
+        hint_quota:
+          type: integer
+          title: Hint Quota
+        allow_syntax_hints:
+          type: boolean
+          title: Allow Syntax Hints
+        allow_logic_hints:
+          type: boolean
+          title: Allow Logic Hints
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        test_cases:
+          items:
+            $ref: '#/components/schemas/TestCaseResponse'
+          type: array
+          title: Test Cases
+          default: []
+        students:
+          items:
+            $ref: '#/components/schemas/StudentSummary'
+          type: array
+          title: Students
+          default: []
+      type: object
+      required:
+      - id
+      - room_code
+      - title
+      - description
+      - starter_code
+      - hint_quota
+      - allow_syntax_hints
+      - allow_logic_hints
+      - is_active
+      - created_at
+      title: ExamSessionDetailResponse
+      description: Full exam room details including active student roster.
+    ExamSessionResponse:
+      properties:
+        id:
+          type: integer
+          title: Id
+        room_code:
+          type: string
+          title: Room Code
+          description: Unique 8-character room invitation code
+          examples:
+          - NAVI-8392
+        title:
+          type: string
+          title: Title
+        description:
+          type: string
+          title: Description
+        starter_code:
+          type: string
+          title: Starter Code
+        hint_quota:
+          type: integer
+          title: Hint Quota
+        allow_syntax_hints:
+          type: boolean
+          title: Allow Syntax Hints
+        allow_logic_hints:
+          type: boolean
+          title: Allow Logic Hints
+        is_active:
+          type: boolean
+          title: Is Active
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        test_cases:
+          items:
+            $ref: '#/components/schemas/TestCaseResponse'
+          type: array
+          title: Test Cases
+          default: []
+      type: object
+      required:
+      - id
+      - room_code
+      - title
+      - description
+      - starter_code
+      - hint_quota
+      - allow_syntax_hints
+      - allow_logic_hints
+      - is_active
+      - created_at
+      title: ExamSessionResponse
+      description: Schema for basic exam room details.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Overall health status
+          examples:
+          - healthy
+        version:
+          type: string
+          title: Version
+          description: Application version
+          examples:
+          - 1.0.0
+        environment:
+          type: string
+          title: Environment
+          description: Active runtime environment
+          examples:
+          - development
+        database_connected:
+          type: boolean
+          title: Database Connected
+          description: Database connection health
+          examples:
+          - true
+      type: object
+      required:
+      - status
+      - version
+      - environment
+      - database_connected
+      title: HealthResponse
+      description: Schema for server health diagnostic output.
+      example:
+        database_connected: true
+        environment: development
+        status: healthy
+        version: 1.0.0
+    PublicTestCase:
+      properties:
+        id:
+          type: integer
+          title: Id
+        input_data:
+          type: string
+          title: Input Data
+        expected_output:
+          type: string
+          title: Expected Output
+      type: object
+      required:
+      - id
+      - input_data
+      - expected_output
+      title: PublicTestCase
+      description: Public sample test case visible to students.
+    SocraticHintRequest:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+          description: Student session ID
+          examples:
+          - 1
+        source_code:
+          type: string
+          title: Source Code
+          description: Current Python source code with the encountered issue
+          examples:
+          - "def is_prime(n):\n    for i in range(2, n)\n        if n % i == 0:\n\
+            \            return False\n    return True\n"
+        error_type:
+          type: string
+          title: Error Type
+          description: 'Category of error: SyntaxError, IndentationError, IndexError,
+            ZeroDivisionError, WrongAnswer, etc.'
+          examples:
+          - SyntaxError
+        error_message:
+          type: string
+          title: Error Message
+          description: Raw error output or exception trace
+          examples:
+          - expected ':' on line 2
+        faulty_line_number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Faulty Line Number
+          description: Target line number detected by AST or traceback
+          examples:
+          - 2
+        language:
+          type: string
+          title: Language
+          description: 'Target language for guidance: ''id'' (Indonesian) or ''en''
+            (English)'
+          default: id
+          examples:
+          - id
+      type: object
+      required:
+      - student_id
+      - source_code
+      - error_type
+      - error_message
+      title: SocraticHintRequest
+      description: Schema for student requesting a Socratic hint on code errors.
+      example:
+        error_message: expected ':' on line 2
+        error_type: SyntaxError
+        faulty_line_number: 2
+        language: id
+        source_code: "def is_prime(n):\n    for i in range(2, n)\n        if n % i\
+          \ == 0:\n            return False\n    return True\n"
+        student_id: 1
+    SocraticHintResponse:
+      properties:
+        hint_text:
+          type: string
+          title: Hint Text
+          description: Guiding reflective question that nudges the student without
+            revealing the solution
+          examples:
+          - Coba periksa baris ke-2 pada struktur perulangan 'for'. Tanda baca apa
+            yang wajib dicantumkan di akhir baris sebelum blok kode berikutnya dimulai?
+        target_line_number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Target Line Number
+          examples:
+          - 2
+        hints_used:
+          type: integer
+          title: Hints Used
+          examples:
+          - 1
+        remaining_hints:
+          type: integer
+          title: Remaining Hints
+          examples:
+          - 2
+        total_quota:
+          type: integer
+          title: Total Quota
+          examples:
+          - 3
+        engine_used:
+          type: string
+          title: Engine Used
+          examples:
+          - gemini
+      type: object
+      required:
+      - hint_text
+      - hints_used
+      - remaining_hints
+      - total_quota
+      - engine_used
+      title: SocraticHintResponse
+      description: Socratic hint response delivered to the student kiosk.
+      example:
+        engine_used: gemini
+        hint_text: Coba periksa baris ke-2 pada struktur perulangan 'for'. Tanda baca
+          apa yang wajib dicantumkan di akhir baris sebelum blok kode berikutnya dimulai?
+        hints_used: 1
+        remaining_hints: 2
+        target_line_number: 2
+        total_quota: 3
+    StudentJoinRequest:
+      properties:
+        room_code:
+          type: string
+          maxLength: 32
+          minLength: 4
+          title: Room Code
+          description: Exam room invitation code
+          examples:
+          - NAVI-8392
+        student_name:
+          type: string
+          maxLength: 150
+          minLength: 2
+          title: Student Name
+          description: Full student name
+          examples:
+          - Budi Pratama
+        student_id_number:
+          type: string
+          maxLength: 100
+          minLength: 2
+          title: Student Id Number
+          description: Student ID / NIM
+          examples:
+          - '13521001'
+      type: object
+      required:
+      - room_code
+      - student_name
+      - student_id_number
+      title: StudentJoinRequest
+      description: Schema for student joining an exam room from the kiosk application.
+      example:
+        room_code: NAVI-8392
+        student_id_number: '13521001'
+        student_name: Budi Pratama
+    StudentJoinResponse:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+          description: Unique student session ID
+          examples:
+          - 1
+        room_code:
+          type: string
+          title: Room Code
+          examples:
+          - NAVI-8392
+        title:
+          type: string
+          title: Title
+          examples:
+          - Pengecekan Bilangan Prima
+        description:
+          type: string
+          title: Description
+          examples:
+          - Buat fungsi yang membaca bilangan prima...
+        starter_code:
+          type: string
+          title: Starter Code
+          examples:
+          - "def is_prime(n):\n    pass\n"
+        hint_quota:
+          type: integer
+          title: Hint Quota
+          examples:
+          - 3
+        hints_used:
+          type: integer
+          title: Hints Used
+          examples:
+          - 0
+        remaining_hints:
+          type: integer
+          title: Remaining Hints
+          examples:
+          - 3
+        allow_syntax_hints:
+          type: boolean
+          title: Allow Syntax Hints
+          examples:
+          - true
+        allow_logic_hints:
+          type: boolean
+          title: Allow Logic Hints
+          examples:
+          - true
+        public_test_cases:
+          items:
+            $ref: '#/components/schemas/PublicTestCase'
+          type: array
+          title: Public Test Cases
+          default: []
+      type: object
+      required:
+      - student_id
+      - room_code
+      - title
+      - description
+      - starter_code
+      - hint_quota
+      - hints_used
+      - remaining_hints
+      - allow_syntax_hints
+      - allow_logic_hints
+      title: StudentJoinResponse
+      description: Payload delivered to student kiosk upon successful room entry.
+    StudentStatusResponse:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+        student_name:
+          type: string
+          title: Student Name
+        student_id_number:
+          type: string
+          title: Student Id Number
+        hints_used:
+          type: integer
+          title: Hints Used
+        violation_count:
+          type: integer
+          title: Violation Count
+        last_status:
+          type: string
+          title: Last Status
+        is_submitted:
+          type: boolean
+          title: Is Submitted
+        submitted_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Submitted Code
+      type: object
+      required:
+      - student_id
+      - student_name
+      - student_id_number
+      - hints_used
+      - violation_count
+      - last_status
+      - is_submitted
+      title: StudentStatusResponse
+      description: Current live status of a student participant.
+    StudentSummary:
+      properties:
+        id:
+          type: integer
+          title: Id
+        student_name:
+          type: string
+          title: Student Name
+        student_id_number:
+          type: string
+          title: Student Id Number
+        hints_used:
+          type: integer
+          title: Hints Used
+        violation_count:
+          type: integer
+          title: Violation Count
+        last_status:
+          type: string
+          title: Last Status
+        is_submitted:
+          type: boolean
+          title: Is Submitted
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        submitted_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Submitted At
+      type: object
+      required:
+      - id
+      - student_name
+      - student_id_number
+      - hints_used
+      - violation_count
+      - last_status
+      - is_submitted
+      - started_at
+      title: StudentSummary
+      description: Summary of a student in the teacher's live dashboard.
+    SyntaxErrorDetail:
+      properties:
+        line_number:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Line Number
+          examples:
+          - 4
+        column_offset:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Column Offset
+          examples:
+          - 15
+        error_type:
+          type: string
+          title: Error Type
+          examples:
+          - SyntaxError
+        message:
+          type: string
+          title: Message
+          examples:
+          - expected ':'
+        faulty_line:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Faulty Line
+          examples:
+          - '    for i in range(2, n)'
+      type: object
+      required:
+      - error_type
+      - message
+      title: SyntaxErrorDetail
+      description: Detailed metadata for Python syntax errors.
+    TestCaseCreate:
+      properties:
+        input_data:
+          type: string
+          title: Input Data
+          description: Standard input passed to the program
+          default: ''
+          examples:
+          - '5
+
+            '
+        expected_output:
+          type: string
+          title: Expected Output
+          description: Expected standard output
+          examples:
+          - 'True
+
+            '
+        is_hidden:
+          type: boolean
+          title: Is Hidden
+          description: Whether this test case is hidden from student preview
+          default: false
+          examples:
+          - false
+      type: object
+      required:
+      - expected_output
+      title: TestCaseCreate
+      description: Schema for creating a test case.
+    TestCaseResponse:
+      properties:
+        input_data:
+          type: string
+          title: Input Data
+          description: Standard input passed to the program
+          default: ''
+          examples:
+          - '5
+
+            '
+        expected_output:
+          type: string
+          title: Expected Output
+          description: Expected standard output
+          examples:
+          - 'True
+
+            '
+        is_hidden:
+          type: boolean
+          title: Is Hidden
+          description: Whether this test case is hidden from student preview
+          default: false
+          examples:
+          - false
+        id:
+          type: integer
+          title: Id
+        exam_session_id:
+          type: integer
+          title: Exam Session Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - expected_output
+      - id
+      - exam_session_id
+      - created_at
+      title: TestCaseResponse
+      description: Schema for returning test case details.
+    TestCaseRunResult:
+      properties:
+        test_case_id:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Test Case Id
+        is_hidden:
+          type: boolean
+          title: Is Hidden
+          default: false
+        passed:
+          type: boolean
+          title: Passed
+        input_data:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Input Data
+        expected_output:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expected Output
+        actual_output:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actual Output
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        execution_time_ms:
+          type: number
+          title: Execution Time Ms
+          examples:
+          - 12.5
+      type: object
+      required:
+      - passed
+      - execution_time_ms
+      title: TestCaseRunResult
+      description: Execution result for an individual test case.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    ViolationReportRequest:
+      properties:
+        student_id:
+          type: integer
+          title: Student Id
+          description: Student session ID
+          examples:
+          - 1
+        event_type:
+          type: string
+          title: Event Type
+          description: 'Type of violation: alt_tab, window_blur, devtools_opened,
+            etc.'
+          examples:
+          - alt_tab
+        details:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Details
+          description: Optional diagnostic context from the desktop kiosk client
+          examples:
+          - Student pressed Alt+Tab or switched active application window
+      type: object
+      required:
+      - student_id
+      - event_type
+      title: ViolationReportRequest
+      description: Schema for student kiosk reporting focus loss or Alt+Tab attempt.
+      example:
+        details: Student pressed Alt+Tab or switched active application window
+        event_type: alt_tab
+        student_id: 1
+    ViolationReportResponse:
+      properties:
+        violation_count:
+          type: integer
+          title: Violation Count
+          description: Accumulated violation count for this student
+          examples:
+          - 1
+        event_type:
+          type: string
+          title: Event Type
+          examples:
+          - alt_tab
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        message:
+          type: string
+          title: Message
+          examples:
+          - Violation recorded and broadcasted to teacher dashboard.
+      type: object
+      required:
+      - violation_count
+      - event_type
+      - timestamp
+      - message
+      title: ViolationReportResponse
+      description: Acknowledgement of logged violation.
+tags:
+- name: System & Health
+  description: Server health status, database ping, and environment diagnostics.
+- name: Exam Sessions
+  description: Teacher-managed exam sessions, room code generation, and live room
+    queries.
+- name: Student Sessions
+  description: Student kiosk login, room verification, and exam initialization.
+- name: Code Execution
+  description: Python code testing against public test cases and final exam submission.
+- name: Socratic AI Engine
+  description: Gemini-powered Socratic tutoring with strict code-concealment guardrails.
+- name: Violations & Anti-Cheat
+  description: Logging of window blur, Alt+Tab, and focus loss events from student
+    kiosks.
+- name: WebSockets
+  description: Bidirectional real-time event streaming for teachers and students.

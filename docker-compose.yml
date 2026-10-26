@@ -1,0 +1,78 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: navi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-navi_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-navi_password}
+      POSTGRES_DB: ${POSTGRES_DB:-navi_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-navi_user} -d ${POSTGRES_DB:-navi_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - navi-net
+
+  navi-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: navi-api-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - PROJECT_NAME=Navi Exam & Socratic Engine API
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-navi_user}:${POSTGRES_PASSWORD:-navi_password}@postgres:5432/${POSTGRES_DB:-navi_db}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - CORS_ORIGINS=*
+      - EXECUTION_TIMEOUT_SECONDS=5.0
+      - PISTON_URL=${PISTON_URL:-}
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - navi-net
+
+  # Optional sandbox container for Piston
+  piston-sandbox:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: navi-piston-sandbox
+    restart: unless-stopped
+    profiles:
+      - with-piston
+    ports:
+      - "2000:2000"
+    privileged: true
+    tmpfs:
+      - /tmp:exec
+    networks:
+      - navi-net
+
+volumes:
+  postgres_data:
+    name: navi_postgres_volume
+
+networks:
+  navi-net:
+    driver: bridge
