@@ -196,6 +196,8 @@ The production environment is deployed on an on-premise Mac mini (`vllm-1`) usin
   - **Database Service**: PostgreSQL 16 Alpine container with healthchecks and persistent storage.
 - **Headless Runner Non-Interactive Rules**:
   - Always set `export GIT_TERMINAL_PROMPT=0` to prevent Git from blocking on non-existent TTY terminals.
-  - Always fetch using the ephemeral `GITHUB_TOKEN` (`https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git`) to bypass password and macOS Keychain GUI prompts.
+  - Set `export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"` to ensure SSH operations never block on host key verification (`yes/no`) or passphrase prompts.
+  - Fallback to ephemeral `GITHUB_TOKEN` (`https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git`) if SSH keys are not unlocked in the runner daemon context.
   - Every Git synchronization step must include a strict 1-minute timeout (`timeout-minutes: 1`) to fail fast rather than hanging indefinitely.
+
 

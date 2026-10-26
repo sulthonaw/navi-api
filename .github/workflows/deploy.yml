@@ -23,6 +23,7 @@ jobs:
         run: |
           set -e
           export GIT_TERMINAL_PROMPT=0
+          export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
           REPO_DIR="$HOME/Documents/tendermind/navi-api"
 
           if [ ! -d "$REPO_DIR/.git" ]; then
@@ -30,10 +31,12 @@ jobs:
             exit 1
           fi
 
-          echo "🔄 Fetching latest code with 1-minute timeout limit..."
-          # Authenticated fetch using ephemeral GitHub token (bypasses terminal password prompts)
-          git -C "$REPO_DIR" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 \
-            fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" main
+          echo "🔄 Fetching latest code (SSH with 1-minute timeout limit)..."
+          # Try SSH fetch in non-interactive batch mode; fallback to ephemeral GITHUB_TOKEN if needed
+          if ! git -C "$REPO_DIR" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch origin main; then
+            echo "⚠️ SSH fetch failed or key unauthenticated in runner environment, falling back to GITHUB_TOKEN..."
+            git -C "$REPO_DIR" fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" main
+          fi
 
           git -C "$REPO_DIR" reset --hard FETCH_HEAD
 
