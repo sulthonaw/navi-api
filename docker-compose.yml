@@ -43,12 +43,6 @@ services:
       - CORS_ORIGINS=*
       - EXECUTION_TIMEOUT_SECONDS=5.0
       - PISTON_URL=${PISTON_URL:-}
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
     networks:
       - navi-net
 
