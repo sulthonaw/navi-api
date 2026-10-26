@@ -17,12 +17,14 @@ jobs:
 
     steps:
       - name: Update Production Repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           cd "$HOME/Documents/tendermind/navi-api"
-          echo "🔄 Fetching latest code via SSH..."
-          git fetch origin main
-          git reset --hard origin/main
+          echo "🔄 Fetching latest code via authenticated token..."
+          git fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" main
+          git reset --hard FETCH_HEAD
           echo "✅ Repository updated to latest main."
 
       - name: Build and Deploy Production Docker Containers
