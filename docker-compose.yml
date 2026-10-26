@@ -32,6 +32,8 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/app/app
+    env_file:
+      - .env
     environment:
       - PROJECT_NAME=Navi Exam & Socratic Engine API
       - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -41,8 +43,6 @@ services:
       - CORS_ORIGINS=*
       - EXECUTION_TIMEOUT_SECONDS=5.0
       - PISTON_URL=${PISTON_URL:-}
-    env_file:
-      - .env
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 15s
