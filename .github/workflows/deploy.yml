@@ -14,55 +14,23 @@ jobs:
   deploy:
     name: Production Deploy on Mac mini (vllm-1)
     runs-on: self-hosted
-    timeout-minutes: 10
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Sync code to Production Directory
-        timeout-minutes: 1
+      - name: Update Production Repository
         run: |
           set -e
-          REPO_DIR="$HOME/Documents/tendermind/navi-api"
-          mkdir -p "$REPO_DIR"
-
-          echo "🔄 Syncing latest code to $REPO_DIR..."
-          # Sync checked-out repository to production directory, preserving .env and persistent data
-          rsync -av --delete \
-            --exclude='.git' \
-            --exclude='.env' \
-            --exclude='data' \
-            ./ "$REPO_DIR/"
-
-          echo "✅ Code sync complete."
+          cd "$HOME/Documents/tendermind/navi-api"
+          echo "🔄 Fetching latest code via SSH..."
+          git fetch origin main
+          git reset --hard origin/main
+          echo "✅ Repository updated to latest main."
 
       - name: Build and Deploy Production Docker Containers
         run: |
           set -e
-          REPO_DIR="$HOME/Documents/tendermind/navi-api"
-          cd "$REPO_DIR"
-
-          echo "🐳 Building Docker images (using cache)..."
+          cd "$HOME/Documents/tendermind/navi-api"
+          echo "🐳 Building and starting production containers..."
           docker compose build
-
-          echo "🚀 Starting production services (PostgreSQL 16 + Gunicorn ASGI)..."
           docker compose up -d --remove-orphans
-
-          echo "⏳ Waiting for services to become healthy..."
-          for i in {1..30}; do
-            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' navi-api-service 2>/dev/null || echo '"starting"')
-            if [ "$STATUS" = '"healthy"' ]; then
-              echo "✅ Navi API service is healthy!"
-              break
-            fi
-            echo "Waiting for health check... ($i/30)"
-            sleep 2
-          done
-
           echo "📊 Active Containers:"
           docker compose ps
-
-      - name: Prune Dangling Build Artifacts
-        run: |
-          docker image prune -f || true
