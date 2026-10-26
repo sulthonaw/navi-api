@@ -12,6 +12,19 @@ def test_valid_python_code():
     assert res.line_number is None
 
 
+def test_empty_code_invalid_by_default():
+    """Empty or whitespace code should be invalid by default."""
+    res = ASTValidator.validate("   ")
+    assert res.is_valid is False
+    assert res.error_type == "EmptyCodeError"
+
+
+def test_empty_code_allowed_when_flag_set():
+    """Empty code should be valid when allow_empty=True."""
+    res = ASTValidator.validate("", allow_empty=True)
+    assert res.is_valid is True
+
+
 def test_syntax_error_missing_colon():
     """Code with missing colon should report SyntaxError on the exact line."""
     code = "def is_prime(n)\n    return True\n"
@@ -38,3 +51,20 @@ def test_indentation_error():
     assert res.is_valid is False
     assert res.error_type in ["IndentationError", "SyntaxError"]
     assert res.line_number == 2
+
+
+def test_multi_line_syntax_errors_detected():
+    """Multiple syntax errors on different lines should all be detected."""
+    code = (
+        "def check_num(n):\n"
+        "    if n > 10\n"
+        "        return True\n"
+        "    for i in range(n)\n"
+        "        pass\n"
+    )
+    res = ASTValidator.validate(code)
+    assert res.is_valid is False
+    assert len(res.all_errors) >= 2
+    detected_lines = [e["line_number"] for e in res.all_errors if e.get("line_number")]
+    assert 2 in detected_lines
+    assert 4 in detected_lines

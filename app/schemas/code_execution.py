@@ -60,6 +60,10 @@ class CodeRunResponse(BaseModel):
     )
     has_syntax_error: bool = Field(False, examples=[False])
     syntax_error_details: SyntaxErrorDetail | None = None
+    all_syntax_errors: list[SyntaxErrorDetail] = Field(
+        default_factory=list,
+        description="All detected syntax and indentation errors across the source code",
+    )
     total_tests: int = Field(..., examples=[2])
     passed_tests: int = Field(..., examples=[2])
     all_passed: bool = Field(..., examples=[True])
@@ -73,6 +77,7 @@ class CodeRunResponse(BaseModel):
                 "success": True,
                 "has_syntax_error": False,
                 "syntax_error_details": None,
+                "all_syntax_errors": [],
                 "total_tests": 2,
                 "passed_tests": 2,
                 "all_passed": True,

@@ -10,6 +10,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.exam_session import ExamSession
+    from app.models.hint_log import HintLog
     from app.models.problem import StudentProblemSubmission
     from app.models.violation_log import ViolationLog
 
@@ -51,6 +52,12 @@ class StudentSession(Base, TimestampMixin):
     )
     submissions: Mapped[list["StudentProblemSubmission"]] = relationship(
         "StudentProblemSubmission",
+        back_populates="student_session",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    hint_logs: Mapped[list["HintLog"]] = relationship(
+        "HintLog",
         back_populates="student_session",
         cascade="all, delete-orphan",
         lazy="selectin",

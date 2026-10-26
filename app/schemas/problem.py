@@ -22,10 +22,19 @@ class TestCaseCreate(BaseModel):
     input_data: str = Field(
         "", description="Standard input passed to the program", examples=["7\n"]
     )
-    expected_output: str = Field(..., description="Expected standard output", examples=["True\n"])
+    expected_output: str = Field(
+        ..., min_length=1, description="Expected standard output", examples=["True\n"]
+    )
     is_hidden: bool = Field(
         False, description="Whether this test case is hidden from student preview", examples=[False]
     )
+
+    @field_validator("expected_output")
+    @classmethod
+    def validate_expected_output(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Test case expected_output cannot be empty or only whitespace.")
+        return v
 
 
 class TestCaseResponse(TestCaseCreate):

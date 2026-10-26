@@ -62,7 +62,19 @@ async def test_complete_exam_lifecycle(client: AsyncClient):
     assert problem["points"] == 100
     assert len(problem["public_test_cases"]) == 2  # Hidden case omitted
 
-    # 3. Student runs code with a syntax error (missing colon)
+    # 3a. Student runs empty code (should fail and not pass test cases)
+    run_empty_res = await client.post(
+        "/api/v1/code/run",
+        json={"student_id": student_id, "problem_id": problem_id, "source_code": "   "},
+    )
+    assert run_empty_res.status_code == 200
+    run_empty_data = run_empty_res.json()
+    assert run_empty_data["all_passed"] is False
+    assert run_empty_data["success"] is False
+    assert run_empty_data["passed_tests"] == 0
+    assert "No code submitted" in run_empty_data["stderr"]
+
+    # 3b. Student runs code with a syntax error (missing colon)
     bad_code = "def is_prime(n)\n    return True\n"
     run_bad_res = await client.post(
         "/api/v1/code/run",
@@ -72,8 +84,9 @@ async def test_complete_exam_lifecycle(client: AsyncClient):
     run_bad_data = run_bad_res.json()
     assert run_bad_data["has_syntax_error"] is True
     assert run_bad_data["syntax_error_details"]["line_number"] == 1
+    assert len(run_bad_data["all_syntax_errors"]) >= 1
 
-    # 4. Student requests Socratic Hint for the syntax error
+    # 4a. Student requests Socratic Hint for the syntax error (English default)
     hint_payload = {
         "student_id": student_id,
         "problem_id": problem_id,
@@ -81,14 +94,21 @@ async def test_complete_exam_lifecycle(client: AsyncClient):
         "error_type": "SyntaxError",
         "error_message": "expected ':' on line 1",
         "faulty_line_number": 1,
-        "language": "id",
     }
     hint_res = await client.post("/api/v1/hints/request", json=hint_payload)
     assert hint_res.status_code == 200
     hint_data = hint_res.json()
     assert hint_data["hints_used"] == 1
     assert hint_data["remaining_hints"] == 2
-    assert len(hint_data["hint_text"]) > 10
+    assert hint_data["hint_level"] == 1
+    assert "line 1" in hint_data["hint_text"].lower()
+
+    # 4b. Immediate duplicate click spam: should return existing hint without deducting quota
+    hint_res_spam = await client.post("/api/v1/hints/request", json=hint_payload)
+    assert hint_res_spam.status_code == 200
+    hint_data_spam = hint_res_spam.json()
+    assert hint_data_spam["hints_used"] == 1  # Still 1, quota protected!
+    assert hint_data_spam["remaining_hints"] == 2
 
     # 5. Student fixes code and runs against sample test cases
     good_code = (

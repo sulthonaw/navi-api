@@ -15,7 +15,7 @@ class ExamSessionCreate(BaseModel):
         min_length=3,
         max_length=255,
         description="Exam or session title",
-        examples=["Ujian Akhir Semester Pemrograman Dasar"],
+        examples=["Python Programming Final Examination"],
     )
     duration_minutes: int = Field(
         90,
@@ -50,7 +50,7 @@ class ExamSessionCreate(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "title": "Ujian Akhir Semester Pemrograman Dasar",
+                "title": "Python Programming Final Examination",
                 "duration_minutes": 90,
                 "hint_quota": 5,
                 "allow_syntax_hints": True,

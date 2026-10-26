@@ -31,20 +31,21 @@ class SocraticHintRequest(BaseModel):
         examples=[2],
     )
     language: str = Field(
-        "id",
-        description="Target language for guidance: 'id' (Indonesian) or 'en' (English)",
-        examples=["id"],
+        "en",
+        description="Target language for guidance: 'en' (English, default) or 'id' (Indonesian)",
+        examples=["en"],
     )
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "student_id": 1,
+                "problem_id": 101,
                 "source_code": "def is_prime(n):\n    for i in range(2, n)\n        if n % i == 0:\n            return False\n    return True\n",
                 "error_type": "SyntaxError",
                 "error_message": "expected ':' on line 2",
                 "faulty_line_number": 2,
-                "language": "id",
+                "language": "en",
             }
         }
     )
@@ -57,10 +58,15 @@ class SocraticHintResponse(BaseModel):
         ...,
         description="Guiding reflective question that nudges the student without revealing the solution",
         examples=[
-            "Coba periksa baris ke-2 pada struktur perulangan 'for'. Tanda baca apa yang wajib dicantumkan di akhir baris sebelum blok kode berikutnya dimulai?"
+            "Check line 2 in your 'for' loop structure. What punctuation is required at the end of the line before starting a new block?"
         ],
     )
     target_line_number: int | None = Field(None, examples=[2])
+    hint_level: int = Field(
+        1,
+        description="Progression level of the hint (1: Guiding Question, 2: Conceptual Explanation, 3: Structural Example)",
+        examples=[1],
+    )
     hints_used: int = Field(..., examples=[1])
     remaining_hints: int = Field(..., examples=[2])
     total_quota: int = Field(..., examples=[3])
@@ -69,8 +75,9 @@ class SocraticHintResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "hint_text": "Coba periksa baris ke-2 pada struktur perulangan 'for'. Tanda baca apa yang wajib dicantumkan di akhir baris sebelum blok kode berikutnya dimulai?",
+                "hint_text": "Check line 2 in your 'for' loop structure. What punctuation is required at the end of the line before starting a new block?",
                 "target_line_number": 2,
+                "hint_level": 1,
                 "hints_used": 1,
                 "remaining_hints": 2,
                 "total_quota": 3,

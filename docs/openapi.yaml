@@ -351,6 +351,13 @@ components:
           anyOf:
           - $ref: '#/components/schemas/SyntaxErrorDetail'
           - type: 'null'
+        all_syntax_errors:
+          items:
+            $ref: '#/components/schemas/SyntaxErrorDetail'
+          type: array
+          title: All Syntax Errors
+          description: All detected syntax and indentation errors across the source
+            code
         total_tests:
           type: integer
           title: Total Tests
@@ -396,6 +403,7 @@ components:
       description: Overall outcome of code execution against test cases.
       example:
         all_passed: true
+        all_syntax_errors: []
         has_syntax_error: false
         passed_tests: 2
         stderr: ''
@@ -526,7 +534,7 @@ components:
           title: Title
           description: Exam or session title
           examples:
-          - Ujian Akhir Semester Pemrograman Dasar
+          - Python Programming Final Examination
         duration_minutes:
           type: integer
           maximum: 360.0
@@ -601,7 +609,7 @@ components:
               '
             is_hidden: true
           title: Prime Number Verification
-        title: Ujian Akhir Semester Pemrograman Dasar
+        title: Python Programming Final Examination
     ExamSessionDetailResponse:
       properties:
         id:
@@ -1091,11 +1099,11 @@ components:
         language:
           type: string
           title: Language
-          description: 'Target language for guidance: ''id'' (Indonesian) or ''en''
-            (English)'
-          default: id
+          description: 'Target language for guidance: ''en'' (English, default) or
+            ''id'' (Indonesian)'
+          default: en
           examples:
-          - id
+          - en
       type: object
       required:
       - student_id
@@ -1108,7 +1116,8 @@ components:
         error_message: expected ':' on line 2
         error_type: SyntaxError
         faulty_line_number: 2
-        language: id
+        language: en
+        problem_id: 101
         source_code: "def is_prime(n):\n    for i in range(2, n)\n        if n % i\
           \ == 0:\n            return False\n    return True\n"
         student_id: 1
@@ -1120,8 +1129,8 @@ components:
           description: Guiding reflective question that nudges the student without
             revealing the solution
           examples:
-          - Coba periksa baris ke-2 pada struktur perulangan 'for'. Tanda baca apa
-            yang wajib dicantumkan di akhir baris sebelum blok kode berikutnya dimulai?
+          - Check line 2 in your 'for' loop structure. What punctuation is required
+            at the end of the line before starting a new block?
         target_line_number:
           anyOf:
           - type: integer
@@ -1129,6 +1138,14 @@ components:
           title: Target Line Number
           examples:
           - 2
+        hint_level:
+          type: integer
+          title: Hint Level
+          description: 'Progression level of the hint (1: Guiding Question, 2: Conceptual
+            Explanation, 3: Structural Example)'
+          default: 1
+          examples:
+          - 1
         hints_used:
           type: integer
           title: Hints Used
@@ -1160,8 +1177,9 @@ components:
       description: Socratic hint response delivered to the student kiosk.
       example:
         engine_used: gemini
-        hint_text: Coba periksa baris ke-2 pada struktur perulangan 'for'. Tanda baca
-          apa yang wajib dicantumkan di akhir baris sebelum blok kode berikutnya dimulai?
+        hint_level: 1
+        hint_text: Check line 2 in your 'for' loop structure. What punctuation is
+          required at the end of the line before starting a new block?
         hints_used: 1
         remaining_hints: 2
         target_line_number: 2
@@ -1461,6 +1479,7 @@ components:
             '
         expected_output:
           type: string
+          minLength: 1
           title: Expected Output
           description: Expected standard output
           examples:
@@ -1492,6 +1511,7 @@ components:
             '
         expected_output:
           type: string
+          minLength: 1
           title: Expected Output
           description: Expected standard output
           examples:

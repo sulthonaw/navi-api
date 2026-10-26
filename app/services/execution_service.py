@@ -165,8 +165,40 @@ class CodeExecutionService:
         include_hidden: bool = False,
     ) -> CodeRunResponse:
         """Run AST validation, then execute test cases against the source code."""
-        # Step 1: In-process AST syntax validation
-        ast_result = ASTValidator.validate(source_code)
+        target_cases = (
+            test_cases if include_hidden else [tc for tc in test_cases if not tc.is_hidden]
+        )
+
+        # Step 0: Check for empty source code
+        if not source_code or not source_code.strip():
+            empty_results = [
+                TestCaseRunResult(
+                    test_case_id=tc.id,
+                    is_hidden=tc.is_hidden,
+                    passed=False,
+                    input_data=tc.input_data if not tc.is_hidden else "[HIDDEN]",
+                    expected_output=tc.expected_output if not tc.is_hidden else "[HIDDEN]",
+                    actual_output="",
+                    error_message="No code submitted.",
+                    execution_time_ms=0.0,
+                )
+                for tc in target_cases
+            ]
+            return CodeRunResponse(
+                success=False,
+                has_syntax_error=False,
+                syntax_error_details=None,
+                all_syntax_errors=[],
+                total_tests=len(target_cases),
+                passed_tests=0,
+                all_passed=False,
+                test_results=empty_results,
+                stdout="",
+                stderr="Error: No code submitted. Please write your Python solution before running test cases.",
+            )
+
+        # Step 1: In-process AST syntax validation with multi-line error detection
+        ast_result = ASTValidator.validate(source_code, allow_empty=False)
         if not ast_result.is_valid:
             syntax_detail = SyntaxErrorDetail(
                 line_number=ast_result.line_number,
@@ -175,22 +207,57 @@ class CodeExecutionService:
                 message=ast_result.message or "Syntax Error",
                 faulty_line=ast_result.faulty_line,
             )
+            all_syntax_errors = [
+                SyntaxErrorDetail(
+                    line_number=err.get("line_number"),
+                    column_offset=err.get("column_offset"),
+                    error_type=err.get("error_type", "SyntaxError"),
+                    message=err.get("message", "Syntax Error"),
+                    faulty_line=err.get("faulty_line"),
+                )
+                for err in ast_result.all_errors
+            ]
+            if not all_syntax_errors:
+                all_syntax_errors = [syntax_detail]
+
+            # Build comprehensive multi-line error message
+            err_lines = [
+                f"{err.error_type}: {err.message} on line {err.line_number}"
+                if err.line_number
+                else f"{err.error_type}: {err.message}"
+                for err in all_syntax_errors
+            ]
+            stderr_output = "\n".join(err_lines)
+
             return CodeRunResponse(
                 success=False,
                 has_syntax_error=True,
                 syntax_error_details=syntax_detail,
-                total_tests=len(test_cases),
+                all_syntax_errors=all_syntax_errors,
+                total_tests=len(target_cases),
                 passed_tests=0,
                 all_passed=False,
                 test_results=[],
                 stdout="",
-                stderr=f"{ast_result.error_type}: {ast_result.message} on line {ast_result.line_number}",
+                stderr=stderr_output,
             )
 
-        # Step 2: Execute test cases
-        target_cases = (
-            test_cases if include_hidden else [tc for tc in test_cases if not tc.is_hidden]
-        )
+        # Step 2: Ensure test cases exist
+        if not target_cases:
+            return CodeRunResponse(
+                success=False,
+                has_syntax_error=False,
+                syntax_error_details=None,
+                all_syntax_errors=[],
+                total_tests=0,
+                passed_tests=0,
+                all_passed=False,
+                test_results=[],
+                stdout="",
+                stderr="No test cases configured for this problem.",
+            )
+
+        # Step 3: Execute test cases
         results: list[TestCaseRunResult] = []
         passed_count = 0
         overall_stdout = []
@@ -201,7 +268,11 @@ class CodeExecutionService:
             normalized_actual = run_output.stdout.replace("\r\n", "\n").strip()
             normalized_expected = tc.expected_output.replace("\r\n", "\n").strip()
 
-            is_pass = (run_output.returncode == 0) and (normalized_actual == normalized_expected)
+            is_pass = (
+                run_output.returncode == 0
+                and normalized_actual == normalized_expected
+                and bool(source_code.strip())
+            )
             if is_pass:
                 passed_count += 1
 
@@ -235,6 +306,7 @@ class CodeExecutionService:
             success=all_passed,
             has_syntax_error=False,
             syntax_error_details=None,
+            all_syntax_errors=[],
             total_tests=total_tested,
             passed_tests=passed_count,
             all_passed=all_passed,

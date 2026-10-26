@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.exam_session import ExamSession, TestCase
+from app.models.hint_log import HintLog
 from app.models.problem import Problem, StudentProblemSubmission
 from app.models.student_session import StudentSession
 from app.models.violation_log import ViolationLog
@@ -480,6 +481,43 @@ class ExamService:
                 problem_description = problem.description
                 problem_constraints = problem.constraints
 
+        # Check existing hint history for this student, problem, and faulty line
+        existing_hints_query = (
+            select(HintLog)
+            .where(
+                HintLog.student_session_id == student.id,
+                HintLog.problem_id == payload.problem_id,
+                HintLog.faulty_line_number == payload.faulty_line_number,
+            )
+            .order_by(HintLog.created_at.desc())
+        )
+        res = await db.execute(existing_hints_query)
+        prior_logs = res.scalars().all()
+
+        now = datetime.now(UTC)
+
+        # Duplicate spam click guard: return existing hint without deducting quota if identical request within 5s
+        if prior_logs:
+            latest = prior_logs[0]
+            latest_time = latest.created_at
+            if latest_time.tzinfo is None:
+                latest_time = latest_time.replace(tzinfo=UTC)
+            time_diff = (now - latest_time).total_seconds()
+            if time_diff < 5.0 and latest.error_message == payload.error_message:
+                return SocraticHintResponse(
+                    hint_text=latest.hint_text,
+                    target_line_number=latest.faulty_line_number,
+                    hint_level=latest.hint_level,
+                    hints_used=student.hints_used,
+                    remaining_hints=max(0, room.hint_quota - student.hints_used),
+                    total_quota=room.hint_quota,
+                    engine_used=latest.engine_used,
+                )
+
+        # Progressive hint level: Level 1 for 1st hint on line, Level 2 for 2nd, Level 3 for 3rd+
+        hint_level = min(3, len(prior_logs) + 1)
+        previous_hints = [log.hint_text for log in prior_logs]
+
         # Generate hint using Gemini or heuristic fallback
         hint_text, engine_used = await socratic_engine.generate_hint(
             source_code=payload.source_code,
@@ -487,10 +525,25 @@ class ExamService:
             error_message=payload.error_message,
             faulty_line_number=payload.faulty_line_number,
             language=payload.language,
+            hint_level=hint_level,
+            previous_hints=previous_hints,
             problem_title=problem_title,
             problem_description=problem_description,
             problem_constraints=problem_constraints,
         )
+
+        hint_log = HintLog(
+            student_session_id=student.id,
+            problem_id=payload.problem_id,
+            error_type=payload.error_type,
+            error_message=payload.error_message,
+            faulty_line_number=payload.faulty_line_number,
+            hint_text=hint_text,
+            hint_level=hint_level,
+            engine_used=engine_used,
+            created_at=now,
+        )
+        db.add(hint_log)
 
         student.hints_used += 1
         await db.commit()
@@ -508,12 +561,14 @@ class ExamService:
                 "remaining_hints": new_remaining,
                 "error_type": payload.error_type,
                 "faulty_line_number": payload.faulty_line_number,
+                "hint_level": hint_level,
             },
         )
 
         return SocraticHintResponse(
             hint_text=hint_text,
             target_line_number=payload.faulty_line_number,
+            hint_level=hint_level,
             hints_used=student.hints_used,
             remaining_hints=new_remaining,
             total_quota=room.hint_quota,
