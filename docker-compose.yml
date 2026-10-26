@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: navi-api-service
-    restart: unless-stopped
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,7 +34,7 @@ services:
       - "8000:8000"
     environment:
       - PROJECT_NAME=Navi Exam & Socratic Engine API
-      - ENVIRONMENT=development
+      - ENVIRONMENT=${ENVIRONMENT:-production}
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-navi_user}:${POSTGRES_PASSWORD:-navi_password}@postgres:5432/${POSTGRES_DB:-navi_db}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
@@ -43,8 +43,6 @@ services:
       - PISTON_URL=${PISTON_URL:-}
     env_file:
       - .env
-    volumes:
-      - ./app:/app/app:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
       interval: 15s

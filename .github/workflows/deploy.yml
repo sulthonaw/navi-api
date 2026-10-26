@@ -1,0 +1,63 @@
+name: Deploy NAVI API (Production Docker)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: navi-api-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Production Deploy on Mac mini (vllm-1)
+    runs-on: self-hosted
+
+    steps:
+      - name: Update Production Repository
+        run: |
+          set -e
+          REPO_DIR="$HOME/Documents/tendermind/navi-api"
+
+          if [ ! -d "$REPO_DIR/.git" ]; then
+            echo "❌ Repository not found at $REPO_DIR"
+            exit 1
+          fi
+
+          echo "🔄 Pulling latest code in $REPO_DIR..."
+          git -C "$REPO_DIR" fetch origin main
+          git -C "$REPO_DIR" reset --hard origin/main
+
+          echo "✅ Repository synchronized."
+
+      - name: Build and Deploy Production Docker Containers
+        run: |
+          set -e
+          REPO_DIR="$HOME/Documents/tendermind/navi-api"
+          cd "$REPO_DIR"
+
+          echo "🐳 Building heavy production Docker images..."
+          docker compose build --pull
+
+          echo "🚀 Starting production services (PostgreSQL 16 + Gunicorn ASGI)..."
+          docker compose up -d --remove-orphans
+
+          echo "⏳ Waiting for services to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' navi-api-service 2>/dev/null || echo '"starting"')
+            if [ "$STATUS" = '"healthy"' ]; then
+              echo "✅ Navi API service is healthy!"
+              break
+            fi
+            echo "Waiting for health check... ($i/30)"
+            sleep 2
+          done
+
+          echo "📊 Active Containers:"
+          docker compose ps
+
+      - name: Prune Dangling Build Artifacts
+        run: |
+          docker image prune -f || true
