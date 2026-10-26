@@ -17,8 +17,12 @@ jobs:
 
     steps:
       - name: Update Production Repository
+        timeout-minutes: 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
+          export GIT_TERMINAL_PROMPT=0
           REPO_DIR="$HOME/Documents/tendermind/navi-api"
 
           if [ ! -d "$REPO_DIR/.git" ]; then
@@ -26,11 +30,14 @@ jobs:
             exit 1
           fi
 
-          echo "🔄 Pulling latest code in $REPO_DIR..."
-          git -C "$REPO_DIR" fetch origin main
-          git -C "$REPO_DIR" reset --hard origin/main
+          echo "🔄 Fetching latest code with 1-minute timeout limit..."
+          # Authenticated fetch using ephemeral GitHub token (bypasses terminal password prompts)
+          git -C "$REPO_DIR" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 \
+            fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" main
 
-          echo "✅ Repository synchronized."
+          git -C "$REPO_DIR" reset --hard FETCH_HEAD
+
+          echo "✅ Repository successfully updated."
 
       - name: Build and Deploy Production Docker Containers
         run: |

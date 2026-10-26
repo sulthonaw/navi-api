@@ -183,3 +183,19 @@ All 5 test modules must pass with 100% success rate:
 4. **Maintain OpenAPI examples**. When adding or modifying schemas, update `json_schema_extra` with realistic examples so Swagger UI stays interactive.
 5. **Enforce Ruff Linting**: Ensure all code passes `ruff check .` and `ruff format --check .` with zero errors.
 6. **Use Conventional Commits**: All commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification (e.g., `feat: ...`, `fix: ...`, `chore: ...`, `docs: ...`, `refactor: ...`).
+
+---
+
+## 9. CI/CD & Self-Hosted Runner Deployment (Mac mini)
+
+The production environment is deployed on an on-premise Mac mini (`vllm-1`) using a self-hosted GitHub Actions runner:
+
+- **Target Directory**: `$HOME/Documents/tendermind/navi-api`
+- **Container Architecture**: 100% Docker-based heavy production cluster:
+  - **ASGI Master**: Gunicorn with 4 isolated Uvicorn workers (`-k uvicorn.workers.UvicornWorker -w 4`) for high-concurrency WebSocket streams.
+  - **Database Service**: PostgreSQL 16 Alpine container with healthchecks and persistent storage.
+- **Headless Runner Non-Interactive Rules**:
+  - Always set `export GIT_TERMINAL_PROMPT=0` to prevent Git from blocking on non-existent TTY terminals.
+  - Always fetch using the ephemeral `GITHUB_TOKEN` (`https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git`) to bypass password and macOS Keychain GUI prompts.
+  - Every Git synchronization step must include a strict 1-minute timeout (`timeout-minutes: 1`) to fail fast rather than hanging indefinitely.
+
